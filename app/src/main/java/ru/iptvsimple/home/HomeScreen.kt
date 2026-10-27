@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package ru.iptvsimple.home
 
 import android.view.KeyEvent as AndroidKeyEvent
@@ -5,6 +7,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -49,6 +53,12 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private val VerticalPivot = PivotScroll(0.06f)
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private val HorizontalPivot = PivotScroll(0.12f)
 
 /** Что сейчас переставляют пультом. */
 private data class Moving(val pkg: String)
@@ -128,6 +138,8 @@ fun HomeScreen(
             .padding(horizontal = 44.dp),
     ) {
         Header(config, moving != null, settingsRequester, onOpenSettings)
+        // Выбранный ряд встаёт почти к верху, а ряды прокручиваются под ним.
+        CompositionLocalProvider(LocalBringIntoViewSpec provides VerticalPivot) {
         Column(
             Modifier
                 .fillMaxSize()
@@ -166,7 +178,7 @@ fun HomeScreen(
             if (config.showOthers && others.isNotEmpty()) {
                 RowTitle(if (rows.isEmpty()) "Все приложения" else "Остальные приложения")
                 // Сеткой: столько плиток в строке, сколько помещается по ширине.
-                val perLine = ((960f - 88f + 14f) / (config.tileSize.width + 14f)).toInt().coerceAtLeast(1)
+                val perLine = ((960f - 88f - 28f + 18f) / (config.tileSize.width + 18f)).toInt().coerceAtLeast(1)
                 others.chunked(perLine).forEach { line ->
                     TileRow(scrollable = false) {
                         line.forEach { app ->
@@ -188,6 +200,7 @@ fun HomeScreen(
             if (apps.isEmpty()) {
                 Text("Загружаю приложения…", color = Palette.InkSoft, fontSize = ts(14f), modifier = Modifier.padding(top = 20.dp))
             }
+        }
         }
     }
 
@@ -264,6 +277,8 @@ private fun RowTitle(title: String) {
 
 @Composable
 private fun TileRow(scrollable: Boolean = true, dock: Boolean = false, content: @Composable () -> Unit) {
+    // По ряду выбранная плитка держится у левого края, листается сам ряд.
+    CompositionLocalProvider(LocalBringIntoViewSpec provides HorizontalPivot) {
     Row(
         // Отступы, чтобы увеличенная в фокусе плитка не обрезалась краем ряда.
         // Первый ряд — «док» на матовой подложке, как на Apple TV.
@@ -279,9 +294,11 @@ private fun TileRow(scrollable: Boolean = true, dock: Boolean = false, content: 
                 } else Modifier
             )
             .then(if (scrollable) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
-            .padding(horizontal = 6.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+            // Запас по краям: плитка в фокусе крупнее на 12 % и с тенью.
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) { content() }
+    }
 }
 
 @Composable
@@ -297,32 +314,29 @@ private fun AppTile(
     val width = config.tileSize.width.dp
     val height = width * 9f / 16f
     var focused by remember { mutableStateOf(false) }
+    var pressed by remember { mutableStateOf(false) }
+    val motion = rememberFocusMotion(focused, pressed)
+    val shape = RoundedCornerShape(12.dp)
     Column(Modifier.width(width)) {
         FocusBox(
             onClick = onClick,
             onLongClick = onMenu,
             onFocusChange = { focused = it; if (it) onFocused() },
+            onPressChange = { pressed = it },
             modifier = Modifier
                 .size(width, height)
                 .focusRequester(requester),
-        ) { hasFocus ->
-            // Выбранная плитка приподнимается: крупнее, с тенью — как на Apple TV.
-            val scale by animateFloatAsState(if (hasFocus) 1.1f else 1f, label = "tile")
-            val shape = RoundedCornerShape(12.dp)
+        ) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        translationY = if (hasFocus) -3.dp.toPx() else 0f
-                    }
-                    .shadow(if (hasFocus) 18.dp else 0.dp, shape)
+                    .focusLift(motion, shape)
                     .clip(shape)
                     .background(Palette.Card)
+                    .focusGloss(motion)
                     .border(
-                        width = if (moving) 3.dp else if (hasFocus) 2.dp else 0.dp,
-                        color = if (moving) Palette.Moving else if (hasFocus) Color(0xCCFFFFFF) else Color.Transparent,
+                        width = if (moving) 3.dp else 0.dp,
+                        color = if (moving) Palette.Moving else Color.Transparent,
                         shape = shape,
                     ),
                 contentAlignment = Alignment.Center,
@@ -340,19 +354,23 @@ private fun AppTile(
                 }
             }
         }
-        val showLabel = config.labelMode == LabelMode.Always || focused
+        // Название выплывает из-под плитки вместе с подъёмом.
         Text(
             app.label,
-            color = if (focused) Palette.Ink else Palette.InkSoft,
+            color = Palette.Ink,
             fontSize = ts(12f),
-            fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Normal,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 9.dp)
-                .graphicsLayer { alpha = if (showLabel) 1f else 0f },
+                .padding(top = 12.dp)
+                .graphicsLayer {
+                    val lift = motion.lift.value.coerceIn(0f, 1f)
+                    alpha = if (config.labelMode == LabelMode.Always) 0.7f + 0.3f * lift else lift
+                    translationY = (1f - lift) * -6.dp.toPx() + lift * 3.dp.toPx()
+                },
         )
         Spacer(Modifier.height(2.dp))
     }

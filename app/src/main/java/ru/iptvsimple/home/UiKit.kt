@@ -1,6 +1,8 @@
 package ru.iptvsimple.home
 
 import android.view.KeyEvent as AndroidKeyEvent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -34,6 +36,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
@@ -112,11 +115,13 @@ fun FocusBox(
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     onFocusChange: (Boolean) -> Unit = {},
+    onPressChange: (Boolean) -> Unit = {},
     onKey: ((KeyEvent) -> Boolean)? = null,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     var pressed by remember { mutableStateOf(false) }
+    LaunchedEffect(pressed) { onPressChange(pressed) }
     var longFired by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
@@ -316,9 +321,18 @@ fun TextInputDialog(
 
 @Composable
 private fun DialogPanel(width: Dp, content: @Composable () -> Unit) {
+    // Окно «всплывает»: из чуть меньшего и прозрачного — пружиной, как на Apple TV.
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.78f, stiffness = 520f)) }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             Modifier
+                .graphicsLayer {
+                    alpha = appear.value.coerceIn(0f, 1f)
+                    val s = 0.9f + 0.1f * appear.value
+                    scaleX = s
+                    scaleY = s
+                }
                 .width(width)
                 .heightIn(max = 480.dp)
                 .background(Palette.Panel, RoundedCornerShape(18.dp))
@@ -332,4 +346,25 @@ private fun DialogPanel(width: Dp, content: @Composable () -> Unit) {
 @Composable
 fun Line(text: String, size: Float, color: Color = Palette.Ink, weight: FontWeight = FontWeight.Normal, modifier: Modifier = Modifier) {
     Text(text, color = color, fontSize = ts(size), fontWeight = weight, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier)
+}
+
+/**
+ * Откуда пришёл фокус: последнее нажатие стрелки (−1, 0, 1 по каждой оси). По нему плитка,
+ * получившая фокус, качнётся в сторону движения — как на Apple TV.
+ */
+object NavDirection {
+    var dx = 0
+    var dy = 0
+}
+
+/**
+ * Прокрутка, при которой выбранный элемент встаёт на одно и то же место ([fraction] от
+ * свободного пространства), а двигается содержимое — фокус не «убегает» к краю экрана.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+class PivotScroll(private val fraction: Float) : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val target = (containerSize - size).coerceAtLeast(0f) * fraction
+        return offset - target
+    }
 }

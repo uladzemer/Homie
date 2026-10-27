@@ -1,7 +1,14 @@
 package ru.iptvsimple.home
 
 import android.view.KeyEvent as AndroidKeyEvent
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
@@ -22,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -92,6 +100,7 @@ fun CarouselScreen(
     var moving by remember { mutableStateOf(false) }
     var menuFor by remember { mutableStateOf<String?>(null) }
     var focused by remember { mutableStateOf(false) }
+    var pressed by remember { mutableStateOf(false) }
     val carouselRequester = remember { FocusRequester() }
     val settingsRequester = remember { FocusRequester() }
 
@@ -177,10 +186,25 @@ fun CarouselScreen(
                         else -> false
                     }
                 }
-                .then(confirmHandler(onClick = { current?.let { onLaunch(it.pkg) } }, onLong = { current?.let { menuFor = it.pkg } }, enabled = !moving))
+                .then(confirmHandler(onClick = { current?.let { onLaunch(it.pkg) } }, onLong = { current?.let { menuFor = it.pkg } }, onPress = { pressed = it }, enabled = !moving))
                 .focusable(),
         ) {
-            if (shelf != null) Carousel(shelf.apps, index, coverWidth, highlight = focused, moving = moving)
+            // Смена ряда: новая карусель всплывает снизу или сверху, старая уходит.
+            AnimatedContent(
+                targetState = shelfIndex,
+                transitionSpec = {
+                    val dir = if (targetState > initialState) 1 else -1
+                    (fadeIn(tween(260)) + slideInVertically(spring(dampingRatio = 0.85f, stiffness = 380f)) { dir * it / 6 }) togetherWith
+                        (fadeOut(tween(180)) + slideOutVertically(tween(220)) { -dir * it / 8 })
+                },
+                label = "shelf",
+            ) { i ->
+                val s = shelves.getOrNull(i)
+                if (s != null) {
+                    val idx = s.apps.indexOfFirst { it.pkg == selected[i] }.takeIf { it >= 0 } ?: 0
+                    Carousel(s.apps, idx, coverWidth, highlight = focused, moving = moving, pressed = pressed)
+                }
+            }
         }
 
         // Название выбранного приложения и подсказка.
@@ -233,8 +257,9 @@ private val FinishKeys = setOf(
 
 /** ОК — [onClick] при отпускании, долгое ОК или «Меню» — [onLong]; как в [FocusBox]. */
 @Composable
-private fun confirmHandler(onClick: () -> Unit, onLong: () -> Unit, enabled: Boolean): Modifier {
+private fun confirmHandler(onClick: () -> Unit, onLong: () -> Unit, onPress: (Boolean) -> Unit, enabled: Boolean): Modifier {
     var pressed by remember { mutableStateOf(false) }
+    LaunchedEffect(pressed) { onPress(pressed) }
     var longFired by remember { mutableStateOf(false) }
     return Modifier.onKeyEvent { e ->
         if (!enabled) return@onKeyEvent false
@@ -263,7 +288,7 @@ private fun confirmHandler(onClick: () -> Unit, onLong: () -> Unit, enabled: Boo
 
 /** Сама карусель: обложки по обе стороны от выбранной, плавно доезжают при листании. */
 @Composable
-private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, highlight: Boolean, moving: Boolean) {
+private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, highlight: Boolean, moving: Boolean, pressed: Boolean) {
     val position by animateFloatAsState(
         index.toFloat(),
         spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
@@ -281,6 +306,7 @@ private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, high
             val rotation = -d.coerceIn(-1f, 1f) * 58f
             val scale = 1f - 0.18f * ad.coerceAtMost(1f)
             val app = items[k]
+            key(app.pkg) {
             Column(
                 Modifier
                     .zIndex(10f - ad)
@@ -295,12 +321,15 @@ private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, high
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 val isCenter = ad < 0.5f
-                Cover(app, coverWidth, coverHeight, ring = when {
+                // Выбранная обложка — с тем же подъёмом, бликом и нажатием, что плитки.
+                val motion = rememberFocusMotion(focused = isCenter && highlight, pressed = isCenter && pressed)
+                Cover(app, coverWidth, coverHeight, motion, ring = when {
                     isCenter && moving -> Palette.Moving
                     isCenter && highlight -> Color(0xCCFFFFFF)
                     else -> Color(0x40FFFFFF)
                 })
                 Reflection(app, coverWidth, coverHeight)
+            }
             }
         }
     }
@@ -308,11 +337,12 @@ private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, high
 
 /** Обложка со стеклянным бликом сверху — выпуклая, как в старых системах. */
 @Composable
-private fun Cover(app: InstalledApp, width: Dp, height: Dp, ring: Color) {
+private fun Cover(app: InstalledApp, width: Dp, height: Dp, motion: FocusMotion, ring: Color) {
     val shape = RoundedCornerShape(14.dp)
     Box(
         Modifier
             .size(width, height)
+            .focusLift(motion, shape, maxScale = 1.05f)
             .clip(shape)
             .background(Brush.verticalGradient(listOf(Color(0xFF3A4A60), Color(0xFF151C28))))
             .border(1.5.dp, ring, shape),
@@ -332,6 +362,7 @@ private fun Cover(app: InstalledApp, width: Dp, height: Dp, ring: Color) {
                     ),
                 ),
         )
+        Box(Modifier.fillMaxSize().focusGloss(motion))
     }
 }
 

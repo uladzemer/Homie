@@ -10,7 +10,13 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -75,6 +81,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // Запоминаем направление: плитка, получившая фокус, качнётся в его сторону.
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> { NavDirection.dx = -1; NavDirection.dy = 0 }
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> { NavDirection.dx = 1; NavDirection.dy = 0 }
+            android.view.KeyEvent.KEYCODE_DPAD_UP -> { NavDirection.dx = 0; NavDirection.dy = -1 }
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> { NavDirection.dx = 0; NavDirection.dy = 1 }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         // Нажали «Домой», когда главный экран уже открыт: закрываем настройки, фокус на первую плитку.
@@ -133,7 +150,12 @@ class MainActivity : ComponentActivity() {
                             onDeepFocus = { deep = it },
                         )
                     }
-                    if (showSettings) {
+                    // Панель настроек выезжает слева с затуханием.
+                    AnimatedVisibility(
+                        visible = showSettings,
+                        enter = fadeIn(tween(220)) + slideInHorizontally(spring(dampingRatio = 0.85f, stiffness = 420f)) { -it / 10 },
+                        exit = fadeOut(tween(180)) + slideOutHorizontally(tween(200)) { -it / 12 },
+                    ) {
                         SettingsScreen(
                             config = current,
                             apps = apps,
