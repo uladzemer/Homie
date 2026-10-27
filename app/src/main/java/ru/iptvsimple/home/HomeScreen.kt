@@ -37,7 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -285,6 +288,15 @@ private fun TileRow(scrollable: Boolean = true, dock: Boolean = false, content: 
         // Первый ряд — «док» на матовой подложке без рамки, как на Apple TV.
         modifier = Modifier
             .fillMaxWidth()
+            // У края ряда фокус останавливается, а не перескакивает на кнопки вверху.
+            .focusProperties {
+                onExit = {
+                    if (requestedFocusDirection == FocusDirection.Left || requestedFocusDirection == FocusDirection.Right) {
+                        cancelFocusChange()
+                    }
+                }
+            }
+            .focusGroup()
             .then(
                 if (dock) {
                     Modifier
