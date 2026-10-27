@@ -13,7 +13,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -194,8 +193,8 @@ fun CarouselScreen(
                 targetState = shelfIndex,
                 transitionSpec = {
                     val dir = if (targetState > initialState) 1 else -1
-                    (fadeIn(tween(260)) + slideInVertically(spring(dampingRatio = 0.85f, stiffness = 380f)) { dir * it / 6 }) togetherWith
-                        (fadeOut(tween(180)) + slideOutVertically(tween(220)) { -dir * it / 8 })
+                    (fadeIn(tween(420, easing = AppleEase)) + slideInVertically(liftSpring()) { dir * it / 6 }) togetherWith
+                        (fadeOut(tween(260)) + slideOutVertically(tween(340, easing = AppleEase)) { -dir * it / 8 })
                 },
                 label = "shelf",
             ) { i ->
@@ -215,7 +214,7 @@ fun CarouselScreen(
             if (current != null) {
                 Text(
                     current.label,
-                    color = if (moving) Palette.Moving else Palette.Ink,
+                    color = Palette.Ink,
                     fontSize = ts(22f),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -223,7 +222,7 @@ fun CarouselScreen(
                 )
                 Text(
                     if (moving) "Стрелками — переставить, ОК — готово" else "${index + 1} из ${shelf.apps.size}",
-                    color = if (moving) Palette.Moving else Palette.InkMuted,
+                    color = if (moving) Palette.InkSoft else Palette.InkMuted,
                     fontSize = ts(12f),
                     modifier = Modifier.padding(top = 2.dp),
                 )
@@ -291,7 +290,7 @@ private fun confirmHandler(onClick: () -> Unit, onLong: () -> Unit, onPress: (Bo
 private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, highlight: Boolean, moving: Boolean, pressed: Boolean) {
     val position by animateFloatAsState(
         index.toFloat(),
-        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow),
         label = "carousel",
     )
     val coverHeight = coverWidth * 9f / 16f
@@ -323,11 +322,7 @@ private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, high
                 val isCenter = ad < 0.5f
                 // Выбранная обложка — с тем же подъёмом, бликом и нажатием, что плитки.
                 val motion = rememberFocusMotion(focused = isCenter && highlight, pressed = isCenter && pressed)
-                Cover(app, coverWidth, coverHeight, motion, ring = when {
-                    isCenter && moving -> Palette.Moving
-                    isCenter && highlight -> Color(0xCCFFFFFF)
-                    else -> Color(0x40FFFFFF)
-                })
+                Box(Modifier.wiggle(isCenter && moving)) { Cover(app, coverWidth, coverHeight, motion) }
                 Reflection(app, coverWidth, coverHeight)
             }
             }
@@ -337,15 +332,14 @@ private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, high
 
 /** Обложка со стеклянным бликом сверху — выпуклая, как в старых системах. */
 @Composable
-private fun Cover(app: InstalledApp, width: Dp, height: Dp, motion: FocusMotion, ring: Color) {
+private fun Cover(app: InstalledApp, width: Dp, height: Dp, motion: FocusMotion) {
     val shape = RoundedCornerShape(14.dp)
     Box(
         Modifier
             .size(width, height)
             .focusLift(motion, shape, maxScale = 1.05f)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xFF3A4A60), Color(0xFF151C28))))
-            .border(1.5.dp, ring, shape),
+            .background(Brush.verticalGradient(listOf(Color(0xFF3A3A3C), Color(0xFF1C1C1E)))),
         contentAlignment = Alignment.Center,
     ) {
         CoverImage(app)
@@ -407,7 +401,7 @@ private fun Reflection(app: InstalledApp, width: Dp, height: Dp) {
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.5f)
                     translationY = 0f
                 }
-                .background(Brush.verticalGradient(listOf(Color(0xFF3A4A60), Color(0xFF151C28)))),
+                .background(Brush.verticalGradient(listOf(Color(0xFF3A3A3C), Color(0xFF1C1C1E)))),
             contentAlignment = Alignment.Center,
         ) { CoverImage(app) }
     }
@@ -461,8 +455,7 @@ private fun GlassCapsule(title: String, active: Boolean) {
     Box(
         Modifier
             .clip(shape)
-            .background(Brush.verticalGradient(base))
-            .border(1.dp, if (active) Color(0xFFB8E0FF) else Color(0x55FFFFFF), shape),
+            .background(Brush.verticalGradient(base)),
     ) {
         Box(
             Modifier

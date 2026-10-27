@@ -7,13 +7,12 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.provider.Settings
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PowerSettingsNew
@@ -36,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -140,13 +138,18 @@ private fun RoundButton(
     modifier: Modifier = Modifier,
     alert: Boolean = false,
 ) {
-    FocusBox(onClick = onClick, modifier = modifier) { focused ->
-        val bg = if (focused) Palette.Focus else Palette.Pill
-        val ink = if (focused) Palette.OnFocus else if (alert) Color(0xFFFF6B6B) else Palette.Ink
+    var pressed by remember { mutableStateOf(false) }
+    FocusBox(onClick = onClick, modifier = modifier, onPressChange = { pressed = it }) { focused ->
+        val motion = rememberFocusMotion(focused, pressed)
+        val (bg, focusInk) = buttonColors(focused, Palette.Pill)
+        val ink = if (alert && !focused) Palette.Red else focusInk
+        val shape = RoundedCornerShape(50)
+        // Круглая кнопка; в фокусе плавно раскрывается в «таблетку» с подписью.
         Row(
             Modifier
-                .background(bg, if (focused) RoundedCornerShape(50) else CircleShape)
-                .border(1.dp, if (focused) Palette.Focus else Color(0x33FFFFFF), if (focused) RoundedCornerShape(50) else CircleShape)
+                .focusLift(motion, shape, maxScale = 1.1f)
+                .background(bg, shape)
+                .animateContentSize(liftSpring())
                 .padding(horizontal = if (focused) 14.dp else 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.em
+import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
 import kotlinx.coroutines.Dispatchers
@@ -75,7 +77,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             ScreenDensity {
                 MaterialTheme(colorScheme = darkColorScheme(background = Palette.Window, surface = Palette.Card)) {
-                    Root()
+                    CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = AppFont, letterSpacing = (-0.01).em)) {
+                        Root()
+                    }
                 }
             }
         }
@@ -153,8 +157,8 @@ class MainActivity : ComponentActivity() {
                     // Панель настроек выезжает слева с затуханием.
                     AnimatedVisibility(
                         visible = showSettings,
-                        enter = fadeIn(tween(220)) + slideInHorizontally(spring(dampingRatio = 0.85f, stiffness = 420f)) { -it / 10 },
-                        exit = fadeOut(tween(180)) + slideOutHorizontally(tween(200)) { -it / 12 },
+                        enter = fadeIn(tween(380, easing = AppleEase)) + slideInHorizontally(liftSpring()) { it / 16 },
+                        exit = fadeOut(tween(260, easing = AppleEase)) + slideOutHorizontally(tween(300, easing = AppleEase)) { it / 20 },
                     ) {
                         SettingsScreen(
                             config = current,
@@ -207,7 +211,7 @@ class MainActivity : ComponentActivity() {
 private fun BackdropLayer(config: HomeConfig, photos: List<String>, dim: Boolean) {
     val context = LocalContext.current
     when (config.backdrop) {
-        Backdrop.Dark -> Box(Modifier.fillMaxSize().background(Palette.Window))
+        Backdrop.Dark -> Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1C1C1E), Color(0xFF000000)))))
         Backdrop.Blue -> Box(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF2453A8), Color(0xFF0B1F4A)))),
         )
@@ -232,7 +236,7 @@ private fun BackdropLayer(config: HomeConfig, photos: List<String>, dim: Boolean
         }
     }
     // Затемнение: сверху и снизу сильнее (часы и плитки), при прокрутке вниз — всё темнее.
-    val extra by animateFloatAsState(if (dim) 1f else 0f, tween(400), label = "dim")
+    val extra by animateFloatAsState(if (dim) 1f else 0f, tween(600, easing = AppleEase), label = "dim")
     Box(
         Modifier
             .fillMaxSize()

@@ -6,7 +6,6 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -229,9 +228,9 @@ private fun Header(config: HomeConfig, moving: Boolean, settingsRequester: Focus
         if (moving) {
             Text(
                 "Стрелками — переставить, ОК — готово",
-                color = Palette.Moving,
+                color = Palette.Ink,
                 fontSize = ts(15f),
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
                 modifier = Modifier.align(Alignment.Center),
             )
         }
@@ -268,10 +267,10 @@ fun HomeClock() {
 private fun RowTitle(title: String) {
     Line(
         title,
-        size = 15f,
+        size = 17f,
         color = Palette.InkSoft,
         weight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 4.dp, top = 14.dp, bottom = 8.dp),
+        modifier = Modifier.padding(start = 14.dp, top = 16.dp, bottom = 2.dp),
     )
 }
 
@@ -281,22 +280,21 @@ private fun TileRow(scrollable: Boolean = true, dock: Boolean = false, content: 
     CompositionLocalProvider(LocalBringIntoViewSpec provides HorizontalPivot) {
     Row(
         // Отступы, чтобы увеличенная в фокусе плитка не обрезалась краем ряда.
-        // Первый ряд — «док» на матовой подложке, как на Apple TV.
+        // Первый ряд — «док» на матовой подложке без рамки, как на Apple TV.
         modifier = Modifier
             .fillMaxWidth()
             .then(
                 if (dock) {
                     Modifier
                         .padding(top = 8.dp, bottom = 6.dp)
-                        .background(Color(0x26FFFFFF), RoundedCornerShape(22.dp))
-                        .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(22.dp))
+                        .background(Color(0x1FFFFFFF), RoundedCornerShape(26.dp))
                         .padding(horizontal = 10.dp, vertical = 10.dp)
                 } else Modifier
             )
             .then(if (scrollable) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
             // Запас по краям: плитка в фокусе крупнее на 12 % и с тенью.
             .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) { content() }
     }
 }
@@ -316,8 +314,8 @@ private fun AppTile(
     var focused by remember { mutableStateOf(false) }
     var pressed by remember { mutableStateOf(false) }
     val motion = rememberFocusMotion(focused, pressed)
-    val shape = RoundedCornerShape(12.dp)
-    Column(Modifier.width(width)) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(Modifier.width(width).wiggle(moving)) {
         FocusBox(
             onClick = onClick,
             onLongClick = onMenu,
@@ -333,12 +331,7 @@ private fun AppTile(
                     .focusLift(motion, shape)
                     .clip(shape)
                     .background(Palette.Card)
-                    .focusGloss(motion)
-                    .border(
-                        width = if (moving) 3.dp else 0.dp,
-                        color = if (moving) Palette.Moving else Color.Transparent,
-                        shape = shape,
-                    ),
+                    .focusGloss(motion),
                 contentAlignment = Alignment.Center,
             ) {
                 when {
@@ -346,11 +339,12 @@ private fun AppTile(
                     else -> IconTile(app)
                 }
                 if (moving) {
-                    Text("◀  ▲▼  ▶", color = Palette.Moving, fontSize = ts(14f), fontWeight = FontWeight.Bold,
+                    Text("‹  ↕  ›", color = Palette.Ink, fontSize = ts(13f), fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .background(Color(0xAA000000), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 2.dp))
+                            .padding(bottom = 6.dp)
+                            .background(Palette.Pill, RoundedCornerShape(50))
+                            .padding(horizontal = 10.dp, vertical = 2.dp))
                 }
             }
         }
@@ -358,7 +352,7 @@ private fun AppTile(
         Text(
             app.label,
             color = Palette.Ink,
-            fontSize = ts(12f),
+            fontSize = ts(12.5f),
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -368,8 +362,8 @@ private fun AppTile(
                 .padding(top = 12.dp)
                 .graphicsLayer {
                     val lift = motion.lift.value.coerceIn(0f, 1f)
-                    alpha = if (config.labelMode == LabelMode.Always) 0.7f + 0.3f * lift else lift
-                    translationY = (1f - lift) * -6.dp.toPx() + lift * 3.dp.toPx()
+                    alpha = if (config.labelMode == LabelMode.Always) 0.6f + 0.4f * lift else lift
+                    translationY = (1f - lift) * -4.dp.toPx() + lift * 4.dp.toPx()
                 },
         )
         Spacer(Modifier.height(2.dp))
@@ -384,7 +378,8 @@ private fun IconTile(app: InstalledApp) {
         Text(
             app.label,
             color = Palette.Ink,
-            fontSize = ts(11f),
+            fontSize = ts(11.5f),
+            fontWeight = FontWeight.Medium,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,

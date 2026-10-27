@@ -6,6 +6,8 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -18,17 +20,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 
 /** Какое окно открыто поверх настроек. */
@@ -38,10 +43,12 @@ private sealed interface SettingsDialog {
     data object NewRow : SettingsDialog
     data object Autostart : SettingsDialog
     data object Hidden : SettingsDialog
+    data object Gallery : SettingsDialog
 }
 
 /**
- * Настройки главного экрана. Изменения применяются сразу: фон и размеры видны за панелью.
+ * Настройки главного экрана в духе tvOS: слева крупный значок раздела, справа список.
+ * Изменения применяются сразу: главный экран виден сквозь затемнение.
  * Значения с вариантами листаются кнопками ОК, ◀ и ▶.
  */
 @Composable
@@ -59,26 +66,41 @@ fun SettingsScreen(
 
     fun label(pkg: String) = apps[pkg]?.label ?: pkg
 
-    Box(
+    Row(
         Modifier
             .fillMaxSize()
-            .background(Brush.horizontalGradient(0f to Color(0xF7101A26), 0.5f to Color(0xF0101A26), 0.62f to Color(0xB3101A26), 1f to Color(0x8C101A26))),
+            .background(Color(0xF2000000)),
     ) {
+        // Левая половина: значок раздела и заголовок, как в «Настройках» Apple TV.
         Column(
             Modifier
-                // Фокус не уходит из панели на плитки главного экрана, которые видны справа.
+                .weight(1f)
+                .fillMaxHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(Icons.Rounded.Settings, contentDescription = null, tint = Palette.InkSoft, modifier = Modifier.size(150.dp))
+            Text(
+                "Настройки",
+                color = Palette.Ink,
+                fontSize = ts(28f),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 18.dp),
+            )
+            Text("Homie $versionName", color = Palette.InkMuted, fontSize = ts(13f), modifier = Modifier.padding(top = 4.dp))
+        }
+        Column(
+            Modifier
+                // Фокус не уходит из списка на плитки главного экрана под затемнением.
                 .focusProperties { onExit = { cancelFocusChange() } }
                 .focusGroup()
-                .width(520.dp)
+                .width(500.dp)
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
-                .padding(start = 44.dp, top = 28.dp, bottom = 40.dp),
+                .padding(start = 6.dp, end = 44.dp, top = 40.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Настройки", color = Palette.Ink, fontSize = ts(26f), fontWeight = FontWeight.SemiBold)
-            Text("«Назад» — вернуться на главный экран", color = Palette.InkMuted, fontSize = ts(12f))
-
-            Section("Приставка")
+            Section("Приставка", first = true)
             MenuButton(
                 "Настройки приставки",
                 value = "Wi-Fi, звук, экран, дата и время",
@@ -92,21 +114,21 @@ fun SettingsScreen(
             Choice("Размер надписей", config.textSize, TextSize.entries, { it.title }) { onConfig(config.copy(textSize = it)) }
             Choice("Названия приложений", config.labelMode, LabelMode.entries, { it.title }) { onConfig(config.copy(labelMode = it)) }
             if (config.style == HomeStyle.Modern) Choice("Фон", config.backdrop, Backdrop.entries, { it.title }) { onConfig(config.copy(backdrop = it)) }
-            if (config.style == HomeStyle.Modern && config.backdrop == Backdrop.PhotoFixed && photoCount > 0) {
-                Choice("Картинка", config.photoIndex.coerceIn(0, photoCount - 1), (0 until photoCount).toList(), { "${it + 1} из $photoCount" }) {
-                    onConfig(config.copy(photoIndex = it))
-                }
+            if (config.style == HomeStyle.Modern && photoCount > 0 &&
+                (config.backdrop == Backdrop.PhotoFixed || config.backdrop == Backdrop.PhotosRotating)
+            ) {
+                MenuButton(
+                    "Фотографии",
+                    value = if (config.backdrop == Backdrop.PhotoFixed) "${config.photoIndex.coerceIn(0, photoCount - 1) + 1} из $photoCount" else "Все по очереди",
+                    onClick = { dialog = SettingsDialog.Gallery },
+                )
             }
             Choice("Часы и дата", config.showClock, listOf(true, false), { if (it) "Показывать" else "Скрыть" }) {
                 onConfig(config.copy(showClock = it))
             }
 
             Section("Ряды")
-            Text(
-                "Чтобы переставить или перенести приложение, на главном экране удерживайте ОК на его плитке.",
-                color = Palette.InkMuted,
-                fontSize = ts(12f),
-            )
+            Note("Чтобы переставить или перенести приложение, на главном экране удерживайте ОК на его плитке.")
             config.rows.forEach { row ->
                 val count = row.apps.count { it in apps }
                 MenuButton(
@@ -133,11 +155,7 @@ fun SettingsScreen(
             )
 
             Section("О программе")
-            Text(
-                "Homie $versionName. Без рекламы и интернета. Фотографии — Wikimedia Commons, CC BY-SA.",
-                color = Palette.InkMuted,
-                fontSize = ts(12f),
-            )
+            Note("Homie $versionName. Без рекламы и интернета. Шрифт Inter — SIL OFL. Фотографии — Wikimedia Commons, CC BY-SA.")
         }
     }
 
@@ -194,19 +212,30 @@ fun SettingsScreen(
                 },
             onDismiss = { dialog = null },
         )
+        SettingsDialog.Gallery -> WallpaperGallery(
+            selected = config.photoIndex.takeIf { config.backdrop == Backdrop.PhotoFixed },
+            onPick = { onConfig(config.copy(backdrop = Backdrop.PhotoFixed, photoIndex = it)) },
+            onDismiss = { dialog = null },
+        )
     }
 }
 
+/** Заголовок группы — серым, как в списках tvOS. */
 @Composable
-private fun Section(title: String) {
+private fun Section(title: String, first: Boolean = false) {
     Text(
-        title.uppercase(),
+        title,
         color = Palette.InkMuted,
-        fontSize = ts(11f),
+        fontSize = ts(13f),
         fontWeight = FontWeight.SemiBold,
-        letterSpacing = ts(1.5f),
-        modifier = Modifier.padding(top = 14.dp, start = 4.dp),
+        modifier = Modifier.padding(top = if (first) 0.dp else 18.dp, start = 18.dp, bottom = 2.dp),
     )
+}
+
+/** Пояснение под группой. */
+@Composable
+private fun Note(text: String) {
+    Text(text, color = Palette.InkMuted, fontSize = ts(12.5f), modifier = Modifier.padding(horizontal = 18.dp))
 }
 
 /** Настройка с вариантами: ОК и ▶ — следующий, ◀ — предыдущий. */

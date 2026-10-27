@@ -91,4 +91,15 @@ object Wallpapers {
             BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
         }
     }.getOrNull()
+
+    /** Уменьшенная копия для галереи: каждая [sample]-я точка по обеим осям. */
+    fun thumb(context: Context, name: String, sample: Int): ImageBitmap? = runCatching {
+        context.assets.open("$DIR/$name").use { stream ->
+            val options = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.RGB_565
+                inSampleSize = sample
+            }
+            BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
+        }
+    }.getOrNull()
 }
