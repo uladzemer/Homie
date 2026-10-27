@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Просто Главная</string>
-    <string name="power_service_label">Просто Главная: кнопка питания</string>
+    <string name="app_name">Homie</string>
+    <string name="power_service_label">Homie: кнопка питания</string>
     <string name="power_service_description">Нужна только для кнопки питания на главном экране: усыпить приставку или открыть меню перезагрузки. Ничего на экране не читает.</string>
 </resources>

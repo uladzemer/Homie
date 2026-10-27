@@ -183,7 +183,7 @@ private fun PowerMenu(onDismiss: () -> Unit) {
         MenuDialog(
             title = "Питание",
             subtitle = "Чтобы эта кнопка могла усыпить или перезагрузить приставку, один раз включите " +
-                "«Просто Главная» в разделе «Специальные возможности». Приложение ничего на экране не читает.",
+                "Homie в разделе «Специальные возможности». Приложение ничего на экране не читает.",
             items = listOf(
                 MenuItem("Открыть специальные возможности") { launchSettings(context, Settings.ACTION_ACCESSIBILITY_SETTINGS) },
                 MenuItem("Отмена") { },

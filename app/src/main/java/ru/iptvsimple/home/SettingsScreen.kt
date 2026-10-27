@@ -134,7 +134,7 @@ fun SettingsScreen(
 
             Section("О программе")
             Text(
-                "Просто Главная $versionName. Без рекламы и интернета. Фотографии — Wikimedia Commons, CC BY-SA.",
+                "Homie $versionName. Без рекламы и интернета. Фотографии — Wikimedia Commons, CC BY-SA.",
                 color = Palette.InkMuted,
                 fontSize = ts(12f),
             )

@@ -1,6 +1,6 @@
 import java.util.Properties
 
-// Приложение «Просто Главная» — главный экран (лаунчер) для приставок Android TV.
+// Приложение Homie — главный экран (лаунчер) для приставок Android TV.
 
 plugins {
     alias(libs.plugins.android.application)
@@ -8,10 +8,10 @@ plugins {
 }
 
 // Ключ подписи релиза в репозиторий не кладётся: путь к файлу с параметрами
-// задаётся в ~/.gradle/gradle.properties (prostoHomeSigningProps=/путь/к/файлу.properties)
+// задаётся в ~/.gradle/gradle.properties (homieSigningProps=/путь/к/файлу.properties)
 // или через переменные окружения RELEASE_*. Без ключа релиз собирается неподписанным.
 val releaseSigningProps = Properties().apply {
-    providers.gradleProperty("prostoHomeSigningProps").orNull
+    providers.gradleProperty("homieSigningProps").orNull
         ?.takeIf { it.isNotBlank() }
         ?.let(::file)
         ?.takeIf { it.isFile }
@@ -23,7 +23,7 @@ fun releaseSigningValue(env: String, key: String): String? =
 val releaseStoreFile = releaseSigningValue("RELEASE_KEYSTORE_FILE", "storeFile")
 
 val appVersionName = "0.1.0"
-base.archivesName = "prosto-home-$appVersionName"
+base.archivesName = "homie-$appVersionName"
 
 android {
     namespace = "ru.iptvsimple.home"

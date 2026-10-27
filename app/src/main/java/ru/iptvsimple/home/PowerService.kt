@@ -7,7 +7,7 @@ import android.view.accessibility.AccessibilityEvent
 /**
  * Служба специальных возможностей — единственный способ для обычного приложения усыпить приставку
  * или открыть системное меню питания. События экрана она не читает (см. res/xml/power_service.xml).
- * Включается один раз: Настройки → Специальные возможности → Просто Главная.
+ * Включается один раз: Настройки → Специальные возможности → Homie.
  */
 class PowerService : AccessibilityService() {
     override fun onServiceConnected() {

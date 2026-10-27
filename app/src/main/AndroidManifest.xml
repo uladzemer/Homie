@@ -26,7 +26,7 @@
         android:banner="@drawable/banner"
         android:allowBackup="false"
         android:supportsRtl="false"
-        android:theme="@style/Theme.ProstoHome">
+        android:theme="@style/Theme.Homie">
 
         <activity
             android:name=".MainActivity"

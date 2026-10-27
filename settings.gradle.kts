@@ -1,4 +1,4 @@
-// Сборка «Просто Главная»: главный экран для приставок Android TV.
+// Сборка Homie: главный экран для приставок Android TV.
 
 pluginManagement {
     repositories {
@@ -16,6 +16,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ProstoHome"
+rootProject.name = "Homie"
 
 include(":app")
