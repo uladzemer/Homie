@@ -1,5 +1,7 @@
 package ru.iptvsimple.home
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -81,7 +83,7 @@ fun SettingsScreen(
         ) {
             Icon(Icons.Rounded.Settings, contentDescription = null, tint = Palette.InkSoft, modifier = Modifier.size(150.dp))
             Text(
-                "Настройки",
+                stringResource(R.string.settings),
                 color = Palette.Ink,
                 fontSize = ts(28f),
                 fontWeight = FontWeight.SemiBold,
@@ -100,62 +102,66 @@ fun SettingsScreen(
                 .padding(start = 6.dp, end = 44.dp, top = 40.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Section("Приставка", first = true)
+            Section(stringResource(R.string.section_device), first = true)
             MenuButton(
-                "Настройки приставки",
-                value = "Wi-Fi, звук, экран, дата и время",
+                stringResource(R.string.device_settings),
+                value = stringResource(R.string.device_settings_value),
                 onClick = onSystemSettings,
                 modifier = Modifier.focusRequester(first),
             )
 
-            Section("Вид")
-            Choice("Стиль", config.style, HomeStyle.entries, { it.title }) { onConfig(config.copy(style = it)) }
-            Choice("Размер плиток", config.tileSize, TileSize.entries, { it.title }) { onConfig(config.copy(tileSize = it)) }
-            Choice("Размер надписей", config.textSize, TextSize.entries, { it.title }) { onConfig(config.copy(textSize = it)) }
-            Choice("Названия приложений", config.labelMode, LabelMode.entries, { it.title }) { onConfig(config.copy(labelMode = it)) }
-            if (config.style == HomeStyle.Modern) Choice("Фон", config.backdrop, Backdrop.entries, { it.title }) { onConfig(config.copy(backdrop = it)) }
+            Section(stringResource(R.string.section_appearance))
+            Choice(stringResource(R.string.style), config.style, HomeStyle.entries, { stringResource(it.title) }) { onConfig(config.copy(style = it)) }
+            Choice(stringResource(R.string.tile_size), config.tileSize, TileSize.entries, { stringResource(it.title) }) { onConfig(config.copy(tileSize = it)) }
+            Choice(stringResource(R.string.text_size), config.textSize, TextSize.entries, { stringResource(it.title) }) { onConfig(config.copy(textSize = it)) }
+            Choice(stringResource(R.string.app_names), config.labelMode, LabelMode.entries, { stringResource(it.title) }) { onConfig(config.copy(labelMode = it)) }
+            if (config.style == HomeStyle.Modern) Choice(stringResource(R.string.background), config.backdrop, Backdrop.entries, { stringResource(it.title) }) { onConfig(config.copy(backdrop = it)) }
             if (config.style == HomeStyle.Modern && photoCount > 0 &&
                 (config.backdrop == Backdrop.PhotoFixed || config.backdrop == Backdrop.PhotosRotating)
             ) {
                 MenuButton(
-                    "Фотографии",
-                    value = if (config.backdrop == Backdrop.PhotoFixed) "${config.photoIndex.coerceIn(0, photoCount - 1) + 1} из $photoCount" else "Все по очереди",
+                    stringResource(R.string.photos),
+                    value = if (config.backdrop == Backdrop.PhotoFixed) {
+                        stringResource(R.string.n_of_m, config.photoIndex.coerceIn(0, photoCount - 1) + 1, photoCount)
+                    } else {
+                        stringResource(R.string.photos_all)
+                    },
                     onClick = { dialog = SettingsDialog.Gallery },
                 )
             }
-            Choice("Часы и дата", config.showClock, listOf(true, false), { if (it) "Показывать" else "Скрыть" }) {
+            Choice(stringResource(R.string.clock), config.showClock, listOf(true, false), { stringResource(if (it) R.string.show else R.string.hide) }) {
                 onConfig(config.copy(showClock = it))
             }
 
-            Section("Ряды")
-            Note("Чтобы переставить или перенести приложение, на главном экране удерживайте ОК на его плитке.")
+            Section(stringResource(R.string.section_rows))
+            Note(stringResource(R.string.rows_note))
             config.rows.forEach { row ->
                 val count = row.apps.count { it in apps }
                 MenuButton(
-                    "«${row.title}»",
+                    stringResource(R.string.quoted, row.title),
                     value = appsCount(count),
                     onClick = { dialog = SettingsDialog.RowActions(row.id) },
                 )
             }
-            MenuButton("+ Добавить ряд", onClick = { dialog = SettingsDialog.NewRow })
-            Choice("«Остальные приложения»", config.showOthers, listOf(true, false), { if (it) "Показывать" else "Скрыть" }) {
+            MenuButton("+ " + stringResource(R.string.add_row), onClick = { dialog = SettingsDialog.NewRow })
+            Choice(stringResource(R.string.other_apps_quoted), config.showOthers, listOf(true, false), { stringResource(if (it) R.string.show else R.string.hide) }) {
                 onConfig(config.copy(showOthers = it))
             }
 
-            Section("Приложения")
+            Section(stringResource(R.string.section_apps))
             MenuButton(
-                "При включении приставки открывать",
-                value = config.autostart?.let(::label) ?: "Ничего, только главный экран",
+                stringResource(R.string.open_at_startup),
+                value = config.autostart?.let(::label) ?: stringResource(R.string.nothing_home_only),
                 onClick = { dialog = SettingsDialog.Autostart },
             )
             MenuButton(
-                "Скрытые приложения",
-                value = if (config.hidden.isEmpty()) "Нет" else appsCount(config.hidden.size),
+                stringResource(R.string.hidden_apps),
+                value = if (config.hidden.isEmpty()) stringResource(R.string.none) else appsCount(config.hidden.size),
                 onClick = { if (config.hidden.isNotEmpty()) dialog = SettingsDialog.Hidden },
             )
 
-            Section("О программе")
-            Note("Homie $versionName. Без рекламы и интернета. Шрифт Inter — SIL OFL. Фотографии — Wikimedia Commons, CC BY-SA.")
+            Section(stringResource(R.string.section_about))
+            Note(stringResource(R.string.about_note, versionName))
         }
     }
 
@@ -169,13 +175,13 @@ fun SettingsScreen(
             } else {
                 val rows = config.rows
                 MenuDialog(
-                    title = "Ряд «${row.title}»",
+                    title = stringResource(R.string.row_named, row.title),
                     items = buildList {
-                        add(MenuItem("Переименовать") { dialog = SettingsDialog.Rename(row.id) })
-                        if (index > 0) add(MenuItem("Поднять выше") { onConfig(config.copy(rows = rows.swap(index, index - 1))) })
-                        if (index < rows.lastIndex) add(MenuItem("Опустить ниже") { onConfig(config.copy(rows = rows.swap(index, index + 1))) })
-                        add(MenuItem("Удалить ряд (приложения уйдут в «Остальные»)") { onConfig(config.copy(rows = rows - row)) })
-                        add(MenuItem("Отмена") { })
+                        add(MenuItem(stringResource(R.string.rename)) { dialog = SettingsDialog.Rename(row.id) })
+                        if (index > 0) add(MenuItem(stringResource(R.string.move_up)) { onConfig(config.copy(rows = rows.swap(index, index - 1))) })
+                        if (index < rows.lastIndex) add(MenuItem(stringResource(R.string.move_down)) { onConfig(config.copy(rows = rows.swap(index, index + 1))) })
+                        add(MenuItem(stringResource(R.string.delete_row)) { onConfig(config.copy(rows = rows - row)) })
+                        add(MenuItem(stringResource(R.string.cancel)) { })
                     },
                     onDismiss = { if (dialog == d) dialog = null },
                 )
@@ -184,7 +190,7 @@ fun SettingsScreen(
         is SettingsDialog.Rename -> {
             val row = config.rows.firstOrNull { it.id == d.rowId }
             RowNameDialog(
-                title = "Новое название ряда",
+                title = stringResource(R.string.row_new_name),
                 initial = row?.title.orEmpty(),
                 onDone = { title -> onConfig(config.updateRow(d.rowId) { it.copy(title = title) }) },
                 onDismiss = { dialog = null },
@@ -195,20 +201,20 @@ fun SettingsScreen(
             onDismiss = { dialog = null },
         )
         SettingsDialog.Autostart -> MenuDialog(
-            title = "При включении приставки открывать",
-            subtitle = "Главный экран останется на кнопке «Домой»",
-            items = listOf(MenuItem("Ничего, только главный экран") { onConfig(config.copy(autostart = null)) }) +
+            title = stringResource(R.string.open_at_startup),
+            subtitle = stringResource(R.string.autostart_subtitle),
+            items = listOf(MenuItem(stringResource(R.string.nothing_home_only)) { onConfig(config.copy(autostart = null)) }) +
                 apps.values.sortedBy { it.label.lowercase() }.map { app ->
                     MenuItem(app.label) { onConfig(config.copy(autostart = app.pkg)) }
                 },
             onDismiss = { dialog = null },
         )
         SettingsDialog.Hidden -> MenuDialog(
-            title = "Скрытые приложения",
-            subtitle = "Выберите, какое вернуть в «Остальные приложения»",
-            items = listOf(MenuItem("Вернуть все") { onConfig(config.copy(hidden = emptySet())) }) +
+            title = stringResource(R.string.hidden_apps),
+            subtitle = stringResource(R.string.hidden_subtitle),
+            items = listOf(MenuItem(stringResource(R.string.unhide_all)) { onConfig(config.copy(hidden = emptySet())) }) +
                 config.hidden.sortedBy { label(it).lowercase() }.map { pkg ->
-                    MenuItem("Вернуть «${label(pkg)}»") { onConfig(config.copy(hidden = config.hidden - pkg)) }
+                    MenuItem(stringResource(R.string.unhide_app, label(pkg))) { onConfig(config.copy(hidden = config.hidden - pkg)) }
                 },
             onDismiss = { dialog = null },
         )
@@ -240,7 +246,7 @@ private fun Note(text: String) {
 
 /** Настройка с вариантами: ОК и ▶ — следующий, ◀ — предыдущий. */
 @Composable
-private fun <T> Choice(title: String, value: T, options: List<T>, name: (T) -> String, onChange: (T) -> Unit) {
+private fun <T> Choice(title: String, value: T, options: List<T>, name: @Composable (T) -> String, onChange: (T) -> Unit) {
     val index = options.indexOf(value).coerceAtLeast(0)
     fun step(by: Int) = onChange(options[(index + by + options.size) % options.size])
     MenuButton(
@@ -257,15 +263,8 @@ private fun <T> Choice(title: String, value: T, options: List<T>, name: (T) -> S
     )
 }
 
-private fun appsCount(n: Int): String {
-    val word = when {
-        n % 100 in 11..14 -> "приложений"
-        n % 10 == 1 -> "приложение"
-        n % 10 in 2..4 -> "приложения"
-        else -> "приложений"
-    }
-    return "$n $word"
-}
+@Composable
+private fun appsCount(n: Int): String = pluralStringResource(R.plurals.apps_count, n, n)
 
 private fun <T> List<T>.swap(a: Int, b: Int): List<T> = toMutableList().also {
     val t = it[a]; it[a] = it[b]; it[b] = t

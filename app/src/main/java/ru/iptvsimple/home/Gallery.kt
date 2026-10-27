@@ -1,5 +1,6 @@
 package ru.iptvsimple.home
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -66,8 +67,8 @@ fun WallpaperGallery(selected: Int?, onPick: (Int) -> Unit, onDismiss: () -> Uni
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 60.dp, vertical = 36.dp),
             ) {
-                Text("Фотографии", color = Palette.Ink, fontSize = ts(28f), fontWeight = FontWeight.SemiBold)
-                Text("ОК — сделать фоном главного экрана", color = Palette.InkSoft, fontSize = ts(13f), modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+                Text(stringResource(R.string.photos), color = Palette.Ink, fontSize = ts(28f), fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.gallery_hint), color = Palette.InkSoft, fontSize = ts(13f), modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
                 photos.indices.chunked(4).forEach { line ->
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -124,7 +125,7 @@ private fun PhotoTile(name: String, chosen: Boolean, modifier: Modifier, onFocus
             if (chosen) {
                 Icon(
                     Icons.Rounded.Check,
-                    contentDescription = "Выбрано",
+                    contentDescription = stringResource(R.string.selected),
                     tint = Palette.OnFocus,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)

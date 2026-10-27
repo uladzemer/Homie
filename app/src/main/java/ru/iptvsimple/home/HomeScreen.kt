@@ -2,6 +2,8 @@
 
 package ru.iptvsimple.home
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.stringArrayResource
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
@@ -151,7 +153,7 @@ fun HomeScreen(
                 if (!dock) RowTitle(row.title)
                 if (shown.isEmpty()) {
                     Text(
-                        "Ряд пуст. Удерживайте ОК на плитке в «Остальных приложениях» и выберите «Добавить в ряд».",
+                        stringResource(R.string.row_empty),
                         color = Palette.InkMuted,
                         fontSize = ts(12f),
                         modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
@@ -175,7 +177,7 @@ fun HomeScreen(
                 }
             }
             if (config.showOthers && others.isNotEmpty()) {
-                RowTitle(if (rows.isEmpty()) "Все приложения" else "Остальные приложения")
+                RowTitle(stringResource(if (rows.isEmpty()) R.string.all_apps else R.string.other_apps))
                 // Сеткой: столько плиток в строке, сколько помещается по ширине.
                 val perLine = ((960f - 88f - 28f + 18f) / (config.tileSize.width + 18f)).toInt().coerceAtLeast(1)
                 others.chunked(perLine).forEach { line ->
@@ -197,7 +199,7 @@ fun HomeScreen(
                 }
             }
             if (apps.isEmpty()) {
-                Text("Загружаю приложения…", color = Palette.InkSoft, fontSize = ts(14f), modifier = Modifier.padding(top = 20.dp))
+                Text(stringResource(R.string.loading_apps), color = Palette.InkSoft, fontSize = ts(14f), modifier = Modifier.padding(top = 20.dp))
             }
         }
         }
@@ -227,7 +229,7 @@ private fun Header(config: HomeConfig, moving: Boolean, settingsRequester: Focus
         if (config.showClock) HomeClock()
         if (moving) {
             Text(
-                "Стрелками — переставить, ОК — готово",
+                stringResource(R.string.moving_hint),
                 color = Palette.Ink,
                 fontSize = ts(15f),
                 fontWeight = FontWeight.Medium,
@@ -418,30 +420,30 @@ fun TileMenu(
         return
     }
     val items = buildList {
-        add(MenuItem("Открыть") { onLaunch(pkg) })
+        add(MenuItem(stringResource(R.string.open)) { onLaunch(pkg) })
         if (r >= 0) {
-            add(MenuItem("Переставить стрелками") { onMove(pkg) })
+            add(MenuItem(stringResource(R.string.move_with_arrows)) { onMove(pkg) })
             rows.forEachIndexed { i, row ->
-                if (i != r) add(MenuItem("Перенести в ряд «${row.title}»") { onConfig(config.putApp(pkg, row.id)); onFocus(pkg) })
+                if (i != r) add(MenuItem(stringResource(R.string.move_to_row, row.title)) { onConfig(config.putApp(pkg, row.id)); onFocus(pkg) })
             }
-            add(MenuItem("Убрать с главного экрана") { onConfig(config.removeApp(pkg)) })
+            add(MenuItem(stringResource(R.string.remove_from_home)) { onConfig(config.removeApp(pkg)) })
         } else {
             rows.forEach { row ->
-                add(MenuItem("Добавить в ряд «${row.title}»") { onConfig(config.putApp(pkg, row.id)); onFocus(pkg) })
+                add(MenuItem(stringResource(R.string.add_to_row, row.title)) { onConfig(config.putApp(pkg, row.id)); onFocus(pkg) })
             }
-            add(MenuItem("Создать новый ряд с этим приложением") { newRow = true })
-            add(MenuItem("Скрыть приложение") { onConfig(config.copy(hidden = config.hidden + pkg)) })
+            add(MenuItem(stringResource(R.string.new_row_with_app)) { newRow = true })
+            add(MenuItem(stringResource(R.string.hide_app)) { onConfig(config.copy(hidden = config.hidden + pkg)) })
         }
         if (config.autostart == pkg) {
-            add(MenuItem("Не открывать при включении приставки") { onConfig(config.copy(autostart = null)) })
+            add(MenuItem(stringResource(R.string.autostart_off)) { onConfig(config.copy(autostart = null)) })
         } else {
-            add(MenuItem("Открывать при включении приставки") { onConfig(config.copy(autostart = pkg)) })
+            add(MenuItem(stringResource(R.string.autostart_on)) { onConfig(config.copy(autostart = pkg)) })
         }
-        add(MenuItem("Отмена") { onFocus(pkg) })
+        add(MenuItem(stringResource(R.string.cancel)) { onFocus(pkg) })
     }
     MenuDialog(
         title = apps[pkg]?.label ?: pkg,
-        subtitle = if (r >= 0) "Ряд «${rows[r].title}»" else "Остальные приложения",
+        subtitle = if (r >= 0) stringResource(R.string.row_named, rows[r].title) else stringResource(R.string.other_apps),
         items = items,
         onDismiss = { if (!newRow) onDismiss() },
     )
@@ -449,15 +451,15 @@ fun TileMenu(
 
 /** Готовые названия ряда и ввод своего. */
 @Composable
-fun RowNameDialog(onDone: (String) -> Unit, onDismiss: () -> Unit, title: String = "Название ряда", initial: String = "") {
+fun RowNameDialog(onDone: (String) -> Unit, onDismiss: () -> Unit, title: String = stringResource(R.string.row_name), initial: String = "") {
     var typing by remember { mutableStateOf(false) }
     if (typing) {
         TextInputDialog(title = title, initial = initial, onDone = onDone, onDismiss = onDismiss)
     } else {
-        val presets = listOf("Избранное", "Телевидение", "Кино и сериалы", "Видео", "Музыка и радио", "Детям", "Игры", "Прочее")
+        val presets = stringArrayResource(R.array.row_presets).toList()
         MenuDialog(
             title = title,
-            items = presets.map { MenuItem(it) { onDone(it) } } + MenuItem("Ввести своё название…") { typing = true },
+            items = presets.map { MenuItem(it) { onDone(it) } } + MenuItem(stringResource(R.string.enter_own_name)) { typing = true },
             onDismiss = { if (!typing) onDismiss() },
         )
     }

@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(reloadTick) {
             val loaded = withContext(Dispatchers.IO) { InstalledApps.load(context) }
             apps = loaded
-            if (config == null) applyConfig(HomeConfig.initial(loaded.keys))
+            if (config == null) applyConfig(HomeConfig.initial(loaded.keys, getString(R.string.favourites)))
         }
         val photos = remember { Wallpapers.names(context) }
         val current = config

@@ -1,5 +1,6 @@
 package ru.iptvsimple.home
 
+import androidx.compose.ui.res.stringResource
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -352,7 +353,7 @@ fun TextInputDialog(
                     .padding(horizontal = 16.dp, vertical = 10.dp),
             )
             MenuButton(
-                text = "Готово",
+                text = stringResource(R.string.done),
                 onClick = {
                     if (text.isNotBlank()) {
                         onDismiss()

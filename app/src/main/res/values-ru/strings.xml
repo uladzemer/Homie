@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="power_service_label">Homie: кнопка питания</string>
+    <string name="power_service_description">Нужна только для кнопки питания на главном экране: усыпить приставку или открыть меню перезагрузки. Ничего на экране не читает.</string>
+
+    <string name="all_apps">Все приложения</string>
+    <string name="other_apps">Остальные приложения</string>
+    <string name="other_apps_short">Остальные</string>
+    <string name="loading_apps">Загружаю приложения…</string>
+    <string name="row_empty">Ряд пуст. Удерживайте ОК на плитке в «Остальных приложениях» и выберите «Добавить в ряд».</string>
+    <string name="moving_hint">Стрелками — переставить, ОК — готово</string>
+    <string name="n_of_m">%1$d из %2$d</string>
+    <string name="favourites">Избранное</string>
+
+    <string name="open">Открыть</string>
+    <string name="move_with_arrows">Переставить стрелками</string>
+    <string name="move_to_row">Перенести в ряд «%1$s»</string>
+    <string name="remove_from_home">Убрать с главного экрана</string>
+    <string name="add_to_row">Добавить в ряд «%1$s»</string>
+    <string name="new_row_with_app">Создать новый ряд с этим приложением</string>
+    <string name="hide_app">Скрыть приложение</string>
+    <string name="autostart_off">Не открывать при включении приставки</string>
+    <string name="autostart_on">Открывать при включении приставки</string>
+    <string name="cancel">Отмена</string>
+    <string name="row_named">Ряд «%1$s»</string>
+    <string name="row_name">Название ряда</string>
+    <string name="row_new_name">Новое название ряда</string>
+    <string name="enter_own_name">Ввести своё название…</string>
+    <string name="done">Готово</string>
+    <string-array name="row_presets">
+        <item>Избранное</item>
+        <item>Телевидение</item>
+        <item>Кино и сериалы</item>
+        <item>Видео</item>
+        <item>Музыка и радио</item>
+        <item>Детям</item>
+        <item>Игры</item>
+        <item>Прочее</item>
+    </string-array>
+
+    <string name="net_none">Нет сети</string>
+    <string name="net_cable">Сеть по кабелю</string>
+    <string name="power">Питание</string>
+    <string name="settings">Настройки</string>
+    <string name="sleep">Спящий режим</string>
+    <string name="restart_or_power_off">Перезагрузить или выключить…</string>
+    <string name="power_setup">Чтобы эта кнопка могла усыпить или перезагрузить приставку, один раз включите Homie в разделе «Специальные возможности». Приложение ничего на экране не читает.</string>
+    <string name="open_accessibility">Открыть специальные возможности</string>
+
+    <string name="section_device">Приставка</string>
+    <string name="device_settings">Настройки приставки</string>
+    <string name="device_settings_value">Wi-Fi, звук, экран, дата и время</string>
+    <string name="section_appearance">Вид</string>
+    <string name="style">Стиль</string>
+    <string name="tile_size">Размер плиток</string>
+    <string name="text_size">Размер надписей</string>
+    <string name="app_names">Названия приложений</string>
+    <string name="background">Фон</string>
+    <string name="photos">Фотографии</string>
+    <string name="photos_all">Все по очереди</string>
+    <string name="clock">Часы и дата</string>
+    <string name="show">Показывать</string>
+    <string name="hide">Скрыть</string>
+    <string name="section_rows">Ряды</string>
+    <string name="rows_note">Чтобы переставить или перенести приложение, на главном экране удерживайте ОК на его плитке.</string>
+    <string name="quoted">«%1$s»</string>
+    <string name="add_row">Добавить ряд</string>
+    <string name="other_apps_quoted">«Остальные приложения»</string>
+    <string name="section_apps">Приложения</string>
+    <string name="open_at_startup">При включении приставки открывать</string>
+    <string name="nothing_home_only">Ничего, только главный экран</string>
+    <string name="hidden_apps">Скрытые приложения</string>
+    <string name="none">Нет</string>
+    <string name="section_about">О программе</string>
+    <string name="about_note">Homie %1$s. Без рекламы и интернета. Шрифт Inter — SIL OFL. Фотографии — Wikimedia Commons, CC BY-SA.</string>
+    <string name="rename">Переименовать</string>
+    <string name="move_up">Поднять выше</string>
+    <string name="move_down">Опустить ниже</string>
+    <string name="delete_row">Удалить ряд (приложения уйдут в «Остальные»)</string>
+    <string name="autostart_subtitle">Главный экран останется на кнопке «Домой»</string>
+    <string name="hidden_subtitle">Выберите, какое вернуть в «Остальные приложения»</string>
+    <string name="unhide_all">Вернуть все</string>
+    <string name="unhide_app">Вернуть «%1$s»</string>
+    <plurals name="apps_count">
+        <item quantity="one">%d приложение</item>
+        <item quantity="few">%d приложения</item>
+        <item quantity="many">%d приложений</item>
+        <item quantity="other">%d приложения</item>
+    </plurals>
+
+    <string name="gallery_hint">ОК — сделать фоном главного экрана</string>
+    <string name="selected">Выбрано</string>
+
+    <string name="size_small">Маленькие</string>
+    <string name="size_normal">Обычные</string>
+    <string name="size_large">Крупные</string>
+    <string name="size_huge">Очень крупные</string>
+    <string name="labels_always">Под каждой плиткой</string>
+    <string name="labels_focused">Только у выбранной</string>
+    <string name="style_modern">Современный: ряды плиток</string>
+    <string name="style_classic">Классика: карусель обложек</string>
+    <string name="bg_photos_rotating">Природа, меняется каждые 10 минут</string>
+    <string name="bg_photo_fixed">Одна картинка</string>
+    <string name="bg_dark">Тёмный</string>
+    <string name="bg_blue">Синий</string>
+</resources>

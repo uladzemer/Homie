@@ -1,5 +1,6 @@
 package ru.iptvsimple.home
 
+import androidx.annotation.StringRes
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
@@ -8,38 +9,38 @@ import org.json.JSONObject
 data class HomeRow(val id: Long, val title: String, val apps: List<String>)
 
 /** Размер плиток. Ширина — в dp расчётного экрана 960×540 (см. [ScreenDensity]). */
-enum class TileSize(val title: String, val width: Float) {
-    Small("Маленькие", 128f),
-    Normal("Обычные", 160f),
-    Large("Крупные", 204f),
-    Huge("Очень крупные", 270f),
+enum class TileSize(@StringRes val title: Int, val width: Float) {
+    Small(R.string.size_small, 128f),
+    Normal(R.string.size_normal, 160f),
+    Large(R.string.size_large, 204f),
+    Huge(R.string.size_huge, 270f),
 }
 
 /** Размер надписей: множитель к обычному. */
-enum class TextSize(val title: String, val scale: Float) {
-    Normal("Обычные", 1f),
-    Large("Крупные", 1.3f),
-    Huge("Очень крупные", 1.65f),
+enum class TextSize(@StringRes val title: Int, val scale: Float) {
+    Normal(R.string.size_normal, 1f),
+    Large(R.string.size_large, 1.3f),
+    Huge(R.string.size_huge, 1.65f),
 }
 
 /** Где показывать названия приложений. */
-enum class LabelMode(val title: String) {
-    Always("Под каждой плиткой"),
-    Focused("Только у выбранной"),
+enum class LabelMode(@StringRes val title: Int) {
+    Always(R.string.labels_always),
+    Focused(R.string.labels_focused),
 }
 
 /** Вид главного экрана. */
-enum class HomeStyle(val title: String) {
-    Modern("Современный: ряды плиток"),
-    Classic("Классика: карусель обложек"),
+enum class HomeStyle(@StringRes val title: Int) {
+    Modern(R.string.style_modern),
+    Classic(R.string.style_classic),
 }
 
 /** Фон главного экрана. */
-enum class Backdrop(val title: String) {
-    PhotosRotating("Природа, меняется каждые 10 минут"),
-    PhotoFixed("Одна картинка"),
-    Dark("Тёмный"),
-    Blue("Синий"),
+enum class Backdrop(@StringRes val title: Int) {
+    PhotosRotating(R.string.bg_photos_rotating),
+    PhotoFixed(R.string.bg_photo_fixed),
+    Dark(R.string.bg_dark),
+    Blue(R.string.bg_blue),
 }
 
 /** Всё, что пользователь настраивает. Хранится целиком одной строкой JSON. */
@@ -141,9 +142,9 @@ data class HomeConfig(
          * Первый запуск: один ряд «Избранное» с известными видео-приложениями, какие есть на
          * приставке, остальное — в «Остальных приложениях».
          */
-        fun initial(installed: Collection<String>): HomeConfig {
+        fun initial(installed: Collection<String>, title: String): HomeConfig {
             val favourites = KnownApps.favourites.filter { it in installed }.take(6)
-            return HomeConfig(rows = listOf(HomeRow(1, "Избранное", favourites)))
+            return HomeConfig(rows = listOf(HomeRow(1, title, favourites)))
         }
 
         private inline fun <reified E : Enum<E>> enumOr(name: String, default: E): E =

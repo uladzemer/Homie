@@ -1,6 +1,112 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Homie</string>
-    <string name="power_service_label">Homie: кнопка питания</string>
-    <string name="power_service_description">Нужна только для кнопки питания на главном экране: усыпить приставку или открыть меню перезагрузки. Ничего на экране не читает.</string>
+    <string name="power_service_label">Homie: power button</string>
+    <string name="power_service_description">Only used by the power button on the home screen: put the box to sleep or open the restart menu. It does not read anything on the screen.</string>
+
+    <!-- Home screen -->
+    <string name="all_apps">All Apps</string>
+    <string name="other_apps">Other Apps</string>
+    <string name="other_apps_short">Other</string>
+    <string name="loading_apps">Loading apps…</string>
+    <string name="row_empty">This row is empty. Hold OK on a tile in “Other Apps” and choose “Add to Row”.</string>
+    <string name="moving_hint">Use the arrows to move, OK when done</string>
+    <string name="n_of_m">%1$d of %2$d</string>
+    <string name="favourites">Favorites</string>
+
+    <!-- Tile menu -->
+    <string name="open">Open</string>
+    <string name="move_with_arrows">Move</string>
+    <string name="move_to_row">Move to “%1$s”</string>
+    <string name="remove_from_home">Remove from Home Screen</string>
+    <string name="add_to_row">Add to “%1$s”</string>
+    <string name="new_row_with_app">New Row with This App</string>
+    <string name="hide_app">Hide App</string>
+    <string name="autostart_off">Don’t Open at Startup</string>
+    <string name="autostart_on">Open at Startup</string>
+    <string name="cancel">Cancel</string>
+    <string name="row_named">Row “%1$s”</string>
+    <string name="row_name">Row Name</string>
+    <string name="row_new_name">New Row Name</string>
+    <string name="enter_own_name">Enter a Name…</string>
+    <string name="done">Done</string>
+    <string-array name="row_presets">
+        <item>Favorites</item>
+        <item>TV</item>
+        <item>Movies &amp; Shows</item>
+        <item>Video</item>
+        <item>Music &amp; Radio</item>
+        <item>Kids</item>
+        <item>Games</item>
+        <item>Other</item>
+    </string-array>
+
+    <!-- Status bar -->
+    <string name="net_none">No Network</string>
+    <string name="net_cable">Ethernet</string>
+    <string name="net_wifi">Wi-Fi</string>
+    <string name="power">Power</string>
+    <string name="settings">Settings</string>
+    <string name="sleep">Sleep</string>
+    <string name="restart_or_power_off">Restart or Power Off…</string>
+    <string name="power_setup">To let this button put the box to sleep or restart it, turn on Homie once in Accessibility settings. The app does not read anything on the screen.</string>
+    <string name="open_accessibility">Open Accessibility Settings</string>
+
+    <!-- Settings -->
+    <string name="section_device">Device</string>
+    <string name="device_settings">Device Settings</string>
+    <string name="device_settings_value">Wi-Fi, sound, display, date and time</string>
+    <string name="section_appearance">Appearance</string>
+    <string name="style">Style</string>
+    <string name="tile_size">Tile Size</string>
+    <string name="text_size">Text Size</string>
+    <string name="app_names">App Names</string>
+    <string name="background">Background</string>
+    <string name="photos">Photos</string>
+    <string name="photos_all">All, in Turn</string>
+    <string name="clock">Clock and Date</string>
+    <string name="show">Show</string>
+    <string name="hide">Hide</string>
+    <string name="section_rows">Rows</string>
+    <string name="rows_note">To move an app or put it in another row, hold OK on its tile on the home screen.</string>
+    <string name="quoted">“%1$s”</string>
+    <string name="add_row">Add Row</string>
+    <string name="other_apps_quoted">“Other Apps”</string>
+    <string name="section_apps">Apps</string>
+    <string name="open_at_startup">Open at Startup</string>
+    <string name="nothing_home_only">Nothing, Home Screen Only</string>
+    <string name="hidden_apps">Hidden Apps</string>
+    <string name="none">None</string>
+    <string name="section_about">About</string>
+    <string name="about_note">Homie %1$s. No ads, no internet. Inter font: SIL OFL. Photos: Wikimedia Commons, CC BY-SA.</string>
+    <string name="rename">Rename</string>
+    <string name="move_up">Move Up</string>
+    <string name="move_down">Move Down</string>
+    <string name="delete_row">Delete Row (apps go to “Other Apps”)</string>
+    <string name="autostart_subtitle">The home screen stays on the Home button</string>
+    <string name="hidden_subtitle">Choose an app to bring back to “Other Apps”</string>
+    <string name="unhide_all">Show All</string>
+    <string name="unhide_app">Show “%1$s”</string>
+    <plurals name="apps_count">
+        <item quantity="one">%d app</item>
+        <item quantity="other">%d apps</item>
+    </plurals>
+
+    <!-- Gallery -->
+    <string name="gallery_hint">Press OK to use as the home screen background</string>
+    <string name="selected">Selected</string>
+
+    <!-- Choices -->
+    <string name="size_small">Small</string>
+    <string name="size_normal">Normal</string>
+    <string name="size_large">Large</string>
+    <string name="size_huge">Extra Large</string>
+    <string name="labels_always">Under Every Tile</string>
+    <string name="labels_focused">Selected Tile Only</string>
+    <string name="style_modern">Modern: rows of tiles</string>
+    <string name="style_classic">Classic: cover carousel</string>
+    <string name="bg_photos_rotating">Nature, changes every 10 minutes</string>
+    <string name="bg_photo_fixed">One Photo</string>
+    <string name="bg_dark">Dark</string>
+    <string name="bg_blue">Blue</string>
 </resources>

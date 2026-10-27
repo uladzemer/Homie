@@ -1,5 +1,6 @@
 package ru.iptvsimple.home
 
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -102,15 +103,15 @@ fun StatusBar(settingsRequester: FocusRequester, onOpenSettings: () -> Unit, mod
     var powerMenu by remember { mutableStateOf(false) }
 
     val (netIcon, netText) = when (net) {
-        NetState.None -> Icons.Rounded.SignalWifiOff to "Нет сети"
-        NetState.Cable -> Icons.Rounded.Lan to "Сеть по кабелю"
+        NetState.None -> Icons.Rounded.SignalWifiOff to stringResource(R.string.net_none)
+        NetState.Cable -> Icons.Rounded.Lan to stringResource(R.string.net_cable)
         is NetState.Wifi -> when (net.level) {
             0 -> Icons.Rounded.SignalWifi0Bar
             1 -> Icons.Rounded.NetworkWifi1Bar
             2 -> Icons.Rounded.NetworkWifi2Bar
             3 -> Icons.Rounded.NetworkWifi3Bar
             else -> Icons.Rounded.SignalWifi4Bar
-        } to "Wi-Fi"
+        } to stringResource(R.string.net_wifi)
     }
 
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -118,10 +119,10 @@ fun StatusBar(settingsRequester: FocusRequester, onOpenSettings: () -> Unit, mod
             val action = if (net is NetState.Wifi || net == NetState.None) Settings.ACTION_WIFI_SETTINGS else Settings.ACTION_SETTINGS
             launchSettings(context, action)
         })
-        RoundButton(Icons.Rounded.PowerSettingsNew, "Питание", onClick = { powerMenu = true })
+        RoundButton(Icons.Rounded.PowerSettingsNew, stringResource(R.string.power), onClick = { powerMenu = true })
         RoundButton(
             Icons.Rounded.Settings,
-            "Настройки",
+            stringResource(R.string.settings),
             onClick = onOpenSettings,
             modifier = Modifier.focusRequester(settingsRequester),
         )
@@ -174,22 +175,21 @@ private fun PowerMenu(onDismiss: () -> Unit) {
     val context = LocalContext.current
     if (PowerService.isEnabled) {
         MenuDialog(
-            title = "Питание",
+            title = stringResource(R.string.power),
             items = buildList {
-                if (PowerService.canSleep) add(MenuItem("Спящий режим") { PowerService.sleep() })
-                add(MenuItem("Перезагрузить или выключить…") { PowerService.powerDialog() })
-                add(MenuItem("Отмена") { })
+                if (PowerService.canSleep) add(MenuItem(stringResource(R.string.sleep)) { PowerService.sleep() })
+                add(MenuItem(stringResource(R.string.restart_or_power_off)) { PowerService.powerDialog() })
+                add(MenuItem(stringResource(R.string.cancel)) { })
             },
             onDismiss = onDismiss,
         )
     } else {
         MenuDialog(
-            title = "Питание",
-            subtitle = "Чтобы эта кнопка могла усыпить или перезагрузить приставку, один раз включите " +
-                "Homie в разделе «Специальные возможности». Приложение ничего на экране не читает.",
+            title = stringResource(R.string.power),
+            subtitle = stringResource(R.string.power_setup),
             items = listOf(
-                MenuItem("Открыть специальные возможности") { launchSettings(context, Settings.ACTION_ACCESSIBILITY_SETTINGS) },
-                MenuItem("Отмена") { },
+                MenuItem(stringResource(R.string.open_accessibility)) { launchSettings(context, Settings.ACTION_ACCESSIBILITY_SETTINGS) },
+                MenuItem(stringResource(R.string.cancel)) { },
             ),
             onDismiss = onDismiss,
         )

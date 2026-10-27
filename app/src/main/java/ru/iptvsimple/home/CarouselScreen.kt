@@ -1,5 +1,6 @@
 package ru.iptvsimple.home
 
+import androidx.compose.ui.res.stringResource
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
@@ -80,6 +81,8 @@ fun CarouselScreen(
     onLaunch: (String) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    val allTitle = stringResource(R.string.all_apps)
+    val othersTitle = stringResource(R.string.other_apps_short)
     val shelves = buildList {
         config.rows.forEach { row ->
             val shown = row.apps.mapNotNull { apps[it] }
@@ -89,7 +92,7 @@ fun CarouselScreen(
             val others = apps.values
                 .filter { it.pkg !in config.placed && it.pkg !in config.hidden }
                 .sortedBy { it.label.lowercase() }
-            if (others.isNotEmpty()) add(CarouselShelf(if (isEmpty()) "Все приложения" else "Остальные", null, others))
+            if (others.isNotEmpty()) add(CarouselShelf(if (isEmpty()) allTitle else othersTitle, null, others))
         }
     }
 
@@ -221,13 +224,13 @@ fun CarouselScreen(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    if (moving) "Стрелками — переставить, ОК — готово" else "${index + 1} из ${shelf.apps.size}",
+                    if (moving) stringResource(R.string.moving_hint) else stringResource(R.string.n_of_m, index + 1, shelf.apps.size),
                     color = if (moving) Palette.InkSoft else Palette.InkMuted,
                     fontSize = ts(12f),
                     modifier = Modifier.padding(top = 2.dp),
                 )
             } else if (apps.isEmpty()) {
-                Text("Загружаю приложения…", color = Palette.InkSoft, fontSize = ts(14f))
+                Text(stringResource(R.string.loading_apps), color = Palette.InkSoft, fontSize = ts(14f))
             }
         }
     }
