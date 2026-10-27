@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Тема окна до появления Compose: тёмный фон, без заголовка и анимаций перехода. -->
+    <style name="Theme.ProstoHome" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF0E1621</item>
+        <item name="android:colorBackground">#FF0E1621</item>
+        <item name="android:windowActivityTransitions">false</item>
+        <item name="android:windowShowWallpaper">false</item>
+    </style>
+</resources>

@@ -1,0 +1,23 @@
+# Результаты сборки и кеши Gradle/Kotlin
+build/
+.gradle/
+.kotlin/
+
+# Настройки конкретной машины и среды разработки
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# Ключи подписи и готовые APK в репозиторий не попадают
+*.jks
+*.keystore
+*.apk
+*.aab
+*-release.properties
+keystore.properties
+*.log
+
+# Локальные инструкции для ИИ-помощников — только на машине владельца
+AGENTS.md
+CLAUDE.md

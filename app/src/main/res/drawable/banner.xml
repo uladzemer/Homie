@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Баннер для списка приложений: домик на синем фоне, 16:9. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp"
+    android:viewportWidth="320" android:viewportHeight="180">
+    <path android:fillColor="#FF1B3F8C" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#FF2F6FE0" android:pathData="M0,120Q160,60 320,110V180H0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M160,40L110,84h14v46h26v-30h20v30h26V84h14z" />
+</vector>

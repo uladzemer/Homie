@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Служба только выполняет «сон» и «меню питания»: событий не получает, содержимое окон не читает. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAnnouncement"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="false"
+    android:notificationTimeout="0"
+    android:packageNames="ru.iptvsimple.home"
+    android:description="@string/power_service_description" />
