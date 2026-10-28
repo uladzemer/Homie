@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
         store = ConfigStore(this)
         config = store.load()
         if (savedInstanceState == null) autostartAfterBoot()
+        PowerService.ensureEnabled(this)
 
         registerReceiver(packageReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)

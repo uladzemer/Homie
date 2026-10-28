@@ -55,7 +55,11 @@ With ADB:
 ```
 adb install homie-<version>.apk
 adb shell cmd package set-home-activity ru.iptvsimple.home/.MainActivity
+adb shell pm grant ru.iptvsimple.home android.permission.WRITE_SECURE_SETTINGS
 ```
+
+The last command lets Homie turn its power service back on by itself: some firmwares switch
+accessibility services off on every app update.
 
 ## Build
 

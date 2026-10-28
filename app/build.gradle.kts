@@ -22,7 +22,7 @@ fun releaseSigningValue(env: String, key: String): String? =
     System.getenv(env)?.takeIf { it.isNotBlank() } ?: releaseSigningProps.getProperty(key)
 val releaseStoreFile = releaseSigningValue("RELEASE_KEYSTORE_FILE", "storeFile")
 
-val appVersionName = "0.3.0"
+val appVersionName = "0.3.1"
 base.archivesName = "homie-$appVersionName"
 
 android {
@@ -33,7 +33,7 @@ android {
         applicationId = "ru.iptvsimple.home"
         minSdk = 26
         targetSdk = 33
-        versionCode = 3
+        versionCode = 4
         versionName = appVersionName
     }
 
