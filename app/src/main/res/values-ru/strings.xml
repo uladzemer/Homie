@@ -103,4 +103,16 @@
     <string name="bg_photo_fixed">Одна картинка</string>
     <string name="bg_dark">Тёмный</string>
     <string name="bg_blue">Синий</string>
+
+    <string name="boot_screen">Заставка при включении</string>
+    <string name="boot_stock">Как в прошивке</string>
+    <string name="boot_homie">Homie</string>
+    <string name="boot_custom">Своя картинка</string>
+    <string name="boot_applying">Применяю…</string>
+    <string name="boot_subtitle">Видна, пока приставка загружается. Нужен root. Своя картинка — светлый рисунок на прозрачном фоне в %1$s.</string>
+    <string name="boot_done">Готово. Будет видно при следующем включении.</string>
+    <string name="boot_done_animation">Готово, но заменена только вторая страница: формат логотипа загрузчика у этой приставки незнаком.</string>
+    <string name="boot_no_root">Нужен root. Разрешите Homie в менеджере root и попробуйте снова.</string>
+    <string name="boot_no_image">Картинки нет. Положите PNG в %1$s и попробуйте снова.</string>
+    <string name="boot_failed">Не получилось: %1$s</string>
 </resources>

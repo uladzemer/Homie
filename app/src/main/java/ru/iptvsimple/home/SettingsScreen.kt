@@ -1,5 +1,10 @@
 package ru.iptvsimple.home
 
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import android.view.KeyEvent as AndroidKeyEvent
@@ -46,6 +51,7 @@ private sealed interface SettingsDialog {
     data object Autostart : SettingsDialog
     data object Hidden : SettingsDialog
     data object Gallery : SettingsDialog
+    data object Boot : SettingsDialog
 }
 
 /**
@@ -63,6 +69,11 @@ fun SettingsScreen(
     onSystemSettings: () -> Unit,
 ) {
     var dialog by remember { mutableStateOf<SettingsDialog?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var bootLogo by remember { mutableStateOf(BootScreen.current(context)) }
+    var bootBusy by remember { mutableStateOf(false) }
+    var bootStatus by remember { mutableStateOf<BootScreen.Result?>(null) }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 
@@ -109,6 +120,22 @@ fun SettingsScreen(
                 onClick = onSystemSettings,
                 modifier = Modifier.focusRequester(first),
             )
+            MenuButton(
+                stringResource(R.string.boot_screen),
+                value = if (bootBusy) stringResource(R.string.boot_applying) else stringResource(bootLogo.title),
+                onClick = { if (!bootBusy) dialog = SettingsDialog.Boot },
+            )
+            bootStatus?.let { result ->
+                Note(
+                    when (result) {
+                        BootScreen.Result.Done -> stringResource(R.string.boot_done)
+                        BootScreen.Result.DoneAnimationOnly -> stringResource(R.string.boot_done_animation)
+                        BootScreen.Result.NoRoot -> stringResource(R.string.boot_no_root)
+                        BootScreen.Result.NoCustomImage -> stringResource(R.string.boot_no_image, BootScreen.CUSTOM_PATH)
+                        is BootScreen.Result.Failed -> stringResource(R.string.boot_failed, result.message)
+                    },
+                )
+            }
 
             Section(stringResource(R.string.section_appearance))
             Choice(stringResource(R.string.style), config.style, HomeStyle.entries, { stringResource(it.title) }) { onConfig(config.copy(style = it)) }
@@ -216,6 +243,23 @@ fun SettingsScreen(
                 config.hidden.sortedBy { label(it).lowercase() }.map { pkg ->
                     MenuItem(stringResource(R.string.unhide_app, label(pkg))) { onConfig(config.copy(hidden = config.hidden - pkg)) }
                 },
+            onDismiss = { dialog = null },
+        )
+        SettingsDialog.Boot -> MenuDialog(
+            title = stringResource(R.string.boot_screen),
+            subtitle = stringResource(R.string.boot_subtitle, BootScreen.CUSTOM_PATH),
+            items = BootLogo.entries.map { choice ->
+                MenuItem(stringResource(choice.title)) {
+                    bootBusy = true
+                    bootStatus = null
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) { BootScreen.apply(context, choice) }
+                        if (result == BootScreen.Result.Done || result == BootScreen.Result.DoneAnimationOnly) bootLogo = choice
+                        bootStatus = result
+                        bootBusy = false
+                    }
+                }
+            },
             onDismiss = { dialog = null },
         )
         SettingsDialog.Gallery -> WallpaperGallery(

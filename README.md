@@ -33,6 +33,10 @@ the remote. No ads, no internet access, no tracking. Free and open source (GPL�
 - **Status buttons.** Network (Wi‑Fi strength, Ethernet or "no network"), power (sleep,
   restart), settings.
 - **Autostart.** Open a chosen app (for example IPTV) automatically after the box boots.
+- **Startup screen (root).** Replace the firmware boot logo and boot animation with a clean
+  Homie wordmark and a progress bar — or with your own image (`/sdcard/Homie/boot-logo.png`,
+  a light picture on a transparent background). Originals are backed up and can be restored
+  from Settings. Supported: Amlogic boxes (logo partition) + standard Android boot animation.
 - **English and Russian** — follows the system language.
 - **Private.** No ads, no analytics, no internet permission.
 
@@ -87,6 +91,9 @@ Google LLC. App logos in the screenshots belong to their owners.
 - **Два стиля.** Современный — ряды плиток; Классика — карусель обложек с отражением.
 - **Фон.** Фотографии природы (меняются каждые 10 минут) или одна из галереи, тёмный или синий.
 - **Автозапуск.** Приложение (например, IPTV), которое откроется само после включения приставки.
+- **Заставка при включении (нужен root).** Надпись Homie с полоской загрузки или своя картинка
+  (`/sdcard/Homie/boot-logo.png`, светлый рисунок на прозрачном фоне) вместо заставки прошивки.
+  Оригиналы сохраняются, «Как в прошивке» возвращает их.
 
 **Установка:** APK из [Releases](../../releases), затем «Домой» на пульте → Homie. Для кнопки
 питания один раз включите Homie в «Специальных возможностях».
