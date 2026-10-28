@@ -58,8 +58,9 @@ adb shell cmd package set-home-activity ru.iptvsimple.home/.MainActivity
 adb shell pm grant ru.iptvsimple.home android.permission.WRITE_SECURE_SETTINGS
 ```
 
-The last command lets Homie turn its power service back on by itself: some firmwares switch
-accessibility services off on every app update.
+The last command lets Homie turn its power service on by itself when the button is pressed:
+some firmwares switch accessibility services off on every app update or even on every window
+change, so enabling Homie once in Settings does not stick there.
 
 ## Build
 

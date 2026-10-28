@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <!-- Выдаётся только вручную по ADB: служба питания включается сама после обновления. -->
+    <!-- Выдаётся только вручную по ADB: Homie сам включает службу питания при нажатии кнопки (см. PowerService). -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
 

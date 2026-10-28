@@ -6,6 +6,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 
@@ -13,8 +16,11 @@ import android.view.accessibility.AccessibilityEvent
  * Служба специальных возможностей — единственный способ для обычного приложения усыпить приставку
  * или открыть системное меню питания. События экрана она не читает (см. res/xml/power_service.xml).
  * Включается один раз: Настройки → Специальные возможности → Homie.
- * Некоторые прошивки выключают службу при каждом обновлении приложения — тогда один раз по ADB
- * `pm grant ru.iptvsimple.home android.permission.WRITE_SECURE_SETTINGS`, и [ensureEnabled] вернёт её сам.
+ *
+ * Некоторые прошивки сами выключают службы: при обновлении приложения, а прошивка приставок P7
+ * (Allwinner) — при каждой смене окна, ради Netflix. Тогда один раз по ADB
+ * `pm grant ru.iptvsimple.home android.permission.WRITE_SECURE_SETTINGS`: Homie включит службу сам
+ * в момент нажатия кнопки.
  */
 class PowerService : AccessibilityService() {
     override fun onServiceConnected() {
@@ -33,17 +39,42 @@ class PowerService : AccessibilityService() {
         @Volatile
         private var instance: PowerService? = null
 
-        val isEnabled: Boolean get() = instance != null
+        /** Кнопками питания можно пользоваться: служба включена или Homie может включить её сам. */
+        fun isAvailable(context: Context): Boolean = instance != null || canEnableItself(context)
 
         /** Спящий режим: экран гаснет, приставка просыпается с пульта. */
         val canSleep: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
 
-        fun sleep(): Boolean =
-            canSleep && instance?.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) == true
+        fun sleep(context: Context) {
+            if (canSleep) perform(context, GLOBAL_ACTION_LOCK_SCREEN)
+        }
 
-        /** Включает службу сама, если по ADB выдано WRITE_SECURE_SETTINGS. Без него ничего не делает. */
-        fun ensureEnabled(context: Context) {
-            if (context.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return
+        /** Системное меню питания: перезагрузка и выключение. */
+        fun powerDialog(context: Context) = perform(context, GLOBAL_ACTION_POWER_DIALOG)
+
+        private fun canEnableItself(context: Context) =
+            context.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
+
+        /**
+         * Выполняет действие, при необходимости сначала включив службу. Начинаем с паузы: меню ещё
+         * закрывается, а смена окна на P7 сбрасывает службы. Пока служба не подключилась — повторяем.
+         */
+        private fun perform(context: Context, action: Int) {
+            val app = context.applicationContext
+            val handler = Handler(Looper.getMainLooper())
+            val deadline = SystemClock.uptimeMillis() + 3000
+            handler.postDelayed(object : Runnable {
+                override fun run() {
+                    ensureEnabled(app)
+                    if (instance?.performGlobalAction(action) == true) return
+                    if (SystemClock.uptimeMillis() < deadline) handler.postDelayed(this, 100)
+                }
+            }, 300)
+        }
+
+        /** Включает службу в настройках, если выдано WRITE_SECURE_SETTINGS. Без него ничего не делает. */
+        private fun ensureEnabled(context: Context) {
+            if (!canEnableItself(context)) return
             val me = ComponentName(context, PowerService::class.java)
             val resolver = context.contentResolver
             val enabled = Settings.Secure.getString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
@@ -57,8 +88,5 @@ class PowerService : AccessibilityService() {
                 Settings.Secure.putInt(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
             }
         }
-
-        /** Системное меню питания: перезагрузка и выключение. */
-        fun powerDialog(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_POWER_DIALOG) == true
     }
 }

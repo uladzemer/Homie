@@ -173,12 +173,12 @@ private fun RoundButton(
 @Composable
 private fun PowerMenu(onDismiss: () -> Unit) {
     val context = LocalContext.current
-    if (PowerService.isEnabled) {
+    if (PowerService.isAvailable(context)) {
         MenuDialog(
             title = stringResource(R.string.power),
             items = buildList {
-                if (PowerService.canSleep) add(MenuItem(stringResource(R.string.sleep)) { PowerService.sleep() })
-                add(MenuItem(stringResource(R.string.restart_or_power_off)) { PowerService.powerDialog() })
+                if (PowerService.canSleep) add(MenuItem(stringResource(R.string.sleep)) { PowerService.sleep(context) })
+                add(MenuItem(stringResource(R.string.restart_or_power_off)) { PowerService.powerDialog(context) })
                 add(MenuItem(stringResource(R.string.cancel)) { })
             },
             onDismiss = onDismiss,
