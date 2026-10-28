@@ -57,6 +57,8 @@ data class HomeConfig(
     val showClock: Boolean = true,
     /** Приложение, которое открывается само после включения приставки; null — никакое. */
     val autostart: String? = null,
+    /** Раз в сутки смотреть, не вышла ли новая версия Homie. */
+    val checkUpdates: Boolean = true,
 ) {
     /** Все пакеты, уже стоящие в рядах. */
     val placed: Set<String> get() = rows.flatMapTo(HashSet()) { it.apps }
@@ -115,6 +117,7 @@ data class HomeConfig(
         put("photoIndex", photoIndex)
         put("showClock", showClock)
         autostart?.let { put("autostart", it) }
+        put("checkUpdates", checkUpdates)
     }.toString()
 
     companion object {
@@ -135,6 +138,7 @@ data class HomeConfig(
                 photoIndex = o.optInt("photoIndex", 0),
                 showClock = o.optBoolean("showClock", true),
                 autostart = o.optString("autostart").takeIf { it.isNotEmpty() },
+                checkUpdates = o.optBoolean("checkUpdates", true),
             )
         }
 

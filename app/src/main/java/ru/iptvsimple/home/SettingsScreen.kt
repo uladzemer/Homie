@@ -65,7 +65,9 @@ fun SettingsScreen(
     apps: Map<String, InstalledApp>,
     photoCount: Int,
     versionName: String,
+    updateStatus: UpdateStatus,
     onConfig: (HomeConfig) -> Unit,
+    onCheckUpdates: () -> Unit,
     onSystemSettings: () -> Unit,
 ) {
     var dialog by remember { mutableStateOf<SettingsDialog?>(null) }
@@ -188,6 +190,21 @@ fun SettingsScreen(
             )
 
             Section(stringResource(R.string.section_about))
+            Choice(stringResource(R.string.updates), config.checkUpdates, listOf(true, false), { stringResource(if (it) R.string.on else R.string.off) }) {
+                onConfig(config.copy(checkUpdates = it))
+            }
+            MenuButton(
+                stringResource(R.string.update_check_now),
+                value = when (updateStatus) {
+                    UpdateStatus.Idle -> null
+                    UpdateStatus.Checking -> stringResource(R.string.update_checking)
+                    UpdateStatus.Latest -> stringResource(R.string.update_latest)
+                    UpdateStatus.NoConnection -> stringResource(R.string.update_no_connection)
+                    is UpdateStatus.Available -> stringResource(R.string.update_available, updateStatus.version)
+                },
+                onClick = onCheckUpdates,
+            )
+            Note(stringResource(R.string.updates_note))
             Note(stringResource(R.string.about_note, versionName))
         }
     }

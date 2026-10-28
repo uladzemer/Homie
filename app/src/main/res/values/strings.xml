@@ -78,7 +78,7 @@
     <string name="hidden_apps">Hidden Apps</string>
     <string name="none">None</string>
     <string name="section_about">About</string>
-    <string name="about_note">Homie %1$s. No ads, no internet. Inter font: SIL OFL. Photos: Wikimedia Commons, CC BY-SA.</string>
+    <string name="about_note">Homie %1$s. No ads, no tracking. Inter font: SIL OFL. Photos: Wikimedia Commons, CC BY-SA.</string>
     <string name="rename">Rename</string>
     <string name="move_up">Move Up</string>
     <string name="move_down">Move Down</string>
@@ -122,4 +122,23 @@
     <string name="boot_no_root">Needs root access. Allow Homie in the root manager and try again.</string>
     <string name="boot_no_image">No image found. Put a PNG at %1$s and try again.</string>
     <string name="boot_failed">Couldn’t apply: %1$s</string>
+    <!-- Updates -->
+    <string name="updates">Check for Updates</string>
+    <string name="on">On</string>
+    <string name="off">Off</string>
+    <string name="update_check_now">Check Now</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_latest">Up to Date</string>
+    <string name="update_no_connection">Couldn’t Reach GitHub</string>
+    <string name="update_available">Version %1$s</string>
+    <string name="updates_note">Once a day Homie looks for a new release on GitHub and offers to install it. Nothing else is sent.</string>
+    <string name="update_title">Homie %1$s Is Available</string>
+    <string name="update_subtitle">You have %1$s. After updating, the home screen restarts.</string>
+    <string name="update_now">Update</string>
+    <string name="update_later">Later (remind me in a week)</string>
+    <string name="update_downloading">Downloading Update…</string>
+    <string name="update_installing">Installing…</string>
+    <string name="update_installing_hint">If the box asks, confirm the installation. The home screen will restart by itself.</string>
+    <string name="update_failed">Couldn’t update: %1$s</string>
+    <string name="ok">OK</string>
 </resources>

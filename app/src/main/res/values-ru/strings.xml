@@ -72,7 +72,7 @@
     <string name="hidden_apps">Скрытые приложения</string>
     <string name="none">Нет</string>
     <string name="section_about">О программе</string>
-    <string name="about_note">Homie %1$s. Без рекламы и интернета. Шрифт Inter — SIL OFL. Фотографии — Wikimedia Commons, CC BY-SA.</string>
+    <string name="about_note">Homie %1$s. Без рекламы и слежки. Шрифт Inter — SIL OFL. Фотографии — Wikimedia Commons, CC BY-SA.</string>
     <string name="rename">Переименовать</string>
     <string name="move_up">Поднять выше</string>
     <string name="move_down">Опустить ниже</string>
@@ -115,4 +115,22 @@
     <string name="boot_no_root">Нужен root. Разрешите Homie в менеджере root и попробуйте снова.</string>
     <string name="boot_no_image">Картинки нет. Положите PNG в %1$s и попробуйте снова.</string>
     <string name="boot_failed">Не получилось: %1$s</string>
+    <string name="updates">Проверка обновлений</string>
+    <string name="on">Включена</string>
+    <string name="off">Выключена</string>
+    <string name="update_check_now">Проверить сейчас</string>
+    <string name="update_checking">Проверяю…</string>
+    <string name="update_latest">Последняя версия</string>
+    <string name="update_no_connection">Нет связи с GitHub</string>
+    <string name="update_available">Есть версия %1$s</string>
+    <string name="updates_note">Раз в сутки Homie смотрит, нет ли нового выпуска на GitHub, и предлагает поставить. Больше никуда ничего не отправляется.</string>
+    <string name="update_title">Вышла Homie %1$s</string>
+    <string name="update_subtitle">Сейчас стоит %1$s. После обновления главный экран перезапустится.</string>
+    <string name="update_now">Обновить</string>
+    <string name="update_later">Позже (напомню через неделю)</string>
+    <string name="update_downloading">Загрузка обновления…</string>
+    <string name="update_installing">Установка…</string>
+    <string name="update_installing_hint">Если приставка спросит — подтвердите установку. Главный экран перезапустится сам.</string>
+    <string name="update_failed">Не удалось обновить: %1$s</string>
+    <string name="ok">ОК</string>
 </resources>

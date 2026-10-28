@@ -10,6 +10,7 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.spring
@@ -45,6 +46,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Главный экран приставки. Один экран, настройки открываются поверх него. */
@@ -55,6 +57,8 @@ class MainActivity : ComponentActivity() {
     private var reloadTick by mutableIntStateOf(0)
     private var homeTick by mutableIntStateOf(0)
     private var showSettings by mutableStateOf(false)
+    private var update by mutableStateOf<Updater.Release?>(null)
+    private var updateStatus by mutableStateOf<UpdateStatus>(UpdateStatus.Idle)
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) { reloadTick++ }
@@ -124,6 +128,17 @@ class MainActivity : ComponentActivity() {
         }
         val photos = remember { Wallpapers.names(context) }
         val current = config
+        // Раз в час смотрим, не пора ли проверить обновления (сама проверка — раз в сутки).
+        LaunchedEffect(current?.checkUpdates) {
+            if (current?.checkUpdates != true) return@LaunchedEffect
+            delay(60_000L)
+            while (true) {
+                if (update == null && Updater.due(context)) {
+                    runCatching { Updater.check(context) }.getOrNull()?.let { update = it }
+                }
+                delay(3600_000L)
+            }
+        }
         var deep by remember { mutableStateOf(false) }
 
         BackHandler(enabled = showSettings) { showSettings = false }
@@ -165,15 +180,33 @@ class MainActivity : ComponentActivity() {
                             apps = apps,
                             photoCount = photos.size,
                             versionName = versionName(),
+                            updateStatus = updateStatus,
                             onConfig = ::applyConfig,
+                            onCheckUpdates = ::checkUpdatesNow,
                             onSystemSettings = { launchSettings(this@MainActivity, Settings.ACTION_SETTINGS) },
                         )
                     }
+                    update?.let { release -> UpdateDialog(release, onClose = { update = null }) }
                 }
             }
         }
         // После закрытия настроек фокус возвращается на главный экран.
         LaunchedEffect(showSettings) { if (!showSettings) homeTick++ }
+    }
+
+    /** «Проверить сейчас» в настройках: без оглядки на «Позже». */
+    private fun checkUpdatesNow() {
+        if (updateStatus == UpdateStatus.Checking) return
+        updateStatus = UpdateStatus.Checking
+        lifecycleScope.launch {
+            updateStatus = runCatching { Updater.check(this@MainActivity) }.fold(
+                onSuccess = { release ->
+                    update = release
+                    if (release == null) UpdateStatus.Latest else UpdateStatus.Available(release.version)
+                },
+                onFailure = { UpdateStatus.NoConnection },
+            )
+        }
     }
 
     private fun applyConfig(value: HomeConfig) {
