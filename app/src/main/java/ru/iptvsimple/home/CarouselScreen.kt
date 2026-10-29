@@ -17,17 +17,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
@@ -38,28 +39,28 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.tv.material3.Text
 import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sign
 
@@ -83,16 +84,19 @@ fun CarouselScreen(
 ) {
     val allTitle = stringResource(R.string.all_apps)
     val othersTitle = stringResource(R.string.other_apps_short)
-    val shelves = buildList {
-        config.rows.forEach { row ->
-            val shown = row.apps.mapNotNull { apps[it] }
-            if (shown.isNotEmpty()) add(CarouselShelf(row.title, row.id, shown))
-        }
-        if (config.showOthers) {
-            val others = apps.values
-                .filter { it.pkg !in config.placed && it.pkg !in config.hidden }
-                .sortedBy { it.label.lowercase() }
-            if (others.isNotEmpty()) add(CarouselShelf(if (isEmpty()) allTitle else othersTitle, null, others))
+    val shelves = remember(config.rows, config.hidden, config.showOthers, apps, allTitle, othersTitle) {
+        buildList {
+            val placed = config.placed
+            config.rows.forEach { row ->
+                val shown = row.apps.mapNotNull { apps[it] }
+                if (shown.isNotEmpty()) add(CarouselShelf(row.title, row.id, shown))
+            }
+            if (config.showOthers) {
+                val others = apps.values
+                    .filter { it.pkg !in placed && it.pkg !in config.hidden }
+                    .sortedBy { it.label.lowercase() }
+                if (others.isNotEmpty()) add(CarouselShelf(if (isEmpty()) allTitle else othersTitle, null, others))
+            }
         }
     }
 
@@ -208,7 +212,7 @@ fun CarouselScreen(
                 val s = shelves.getOrNull(i)
                 if (s != null) {
                     val idx = s.apps.indexOfFirst { it.pkg == selected[s.rowId] }.takeIf { it >= 0 } ?: 0
-                    Carousel(s.apps, idx, coverWidth, highlight = focused, moving = moving, pressed = pressed)
+                    Carousel(s.apps, idx, coverWidth, highlight = focused && i == shelfIndex, moving = moving && i == shelfIndex, pressed = pressed && i == shelfIndex, reflections = i == shelfIndex)
                 }
             }
         }
@@ -294,31 +298,40 @@ private fun confirmHandler(onClick: () -> Unit, onLong: () -> Unit, onPress: (Bo
 
 /** Сама карусель: обложки по обе стороны от выбранной, плавно доезжают при листании. */
 @Composable
-private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, highlight: Boolean, moving: Boolean, pressed: Boolean) {
-    val position by animateFloatAsState(
+private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, highlight: Boolean, moving: Boolean, pressed: Boolean, reflections: Boolean) {
+    val position = animateFloatAsState(
         index.toFloat(),
         spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow),
         label = "carousel",
     )
     val coverHeight = coverWidth * 9f / 16f
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        val first = (position - 5).roundToInt().coerceAtLeast(0)
-        val last = (position + 5).roundToInt().coerceAtMost(items.lastIndex)
-        for (k in first..last) {
-            val d = k - position
-            val ad = abs(d)
-            // Центр — плоско и крупно; соседние сдвинуты в стороны, повёрнуты и плотно уложены.
-            val x = if (ad < 1f) d * coverWidth.value * 0.78f else sign(d) * (coverWidth.value * 0.78f + (ad - 1f) * coverWidth.value * 0.34f)
-            val rotation = -d.coerceIn(-1f, 1f) * 58f
-            val scale = 1f - 0.18f * ad.coerceAtMost(1f)
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        // Ширина боковой обложки с запасом на перспективу. За окном нет ни картинок, ни анимаций.
+        val radius = 1f + ((maxWidth.value / 2f + coverWidth.value * 0.3f - coverWidth.value * 0.78f) / (coverWidth.value * 0.34f)).coerceAtLeast(0f)
+        val visible by remember(items.size, radius) { derivedStateOf {
+            ceil(position.value - radius).toInt().coerceAtLeast(0)..floor(position.value + radius).toInt().coerceAtMost(items.lastIndex)
+        } }
+        val center by remember { derivedStateOf { position.value.roundToInt() } }
+        for (k in visible) {
             val app = items[k]
             key(app.pkg) {
             Column(
                 Modifier
-                    .zIndex(10f - ad)
-                    .offset(x = x.dp)
+                    .height(coverHeight * 1.55f + 3.dp)
+                    .layout { measurable, constraints ->
+                        val cover = measurable.measure(constraints)
+                        layout(cover.width, cover.height) {
+                            cover.placeRelative(0, 0, zIndex = 10f - abs(k - position.value))
+                        }
+                    }
                     .graphicsLayer {
-                        rotationY = rotation
+                        val d = k - position.value
+                        val ad = abs(d)
+                        // Покадровая позиция читается только слоем, композиция меняется на границе обложек.
+                        val x = if (ad < 1f) d * coverWidth.value * 0.78f else sign(d) * (coverWidth.value * 0.78f + (ad - 1f) * coverWidth.value * 0.34f)
+                        translationX = x.dp.toPx()
+                        rotationY = -d.coerceIn(-1f, 1f) * 58f
+                        val scale = 1f - 0.18f * ad.coerceAtMost(1f)
                         scaleX = scale
                         scaleY = scale
                         cameraDistance = 14f * density
@@ -326,11 +339,12 @@ private fun Carousel(items: List<InstalledApp>, index: Int, coverWidth: Dp, high
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                val isCenter = ad < 0.5f
+                val isCenter = k == center
                 // Выбранная обложка — с тем же подъёмом, бликом и нажатием, что плитки.
                 val motion = rememberFocusMotion(focused = isCenter && highlight, pressed = isCenter && pressed)
                 Box(Modifier.wiggle(isCenter && moving)) { Cover(app, coverWidth, coverHeight, motion) }
-                Reflection(app, coverWidth, coverHeight)
+                // Далёкие отражения почти не видны; при смене ряда оставляем только новую полку.
+                if (abs(k - center) <= 2 && reflections) Reflection(app, coverWidth, coverHeight)
             }
             }
         }
@@ -386,19 +400,7 @@ private fun Reflection(app: InstalledApp, width: Dp, height: Dp) {
         Modifier
             .padding(top = 3.dp)
             .size(width, height * 0.55f)
-            .clip(RoundedCornerShape(14.dp))
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                drawRect(
-                    Brush.verticalGradient(
-                        listOf(Color.Black.copy(alpha = 0.38f), Color.Transparent),
-                        startY = 0f,
-                        endY = size.height,
-                    ),
-                    blendMode = BlendMode.DstIn,
-                )
-            },
+            .clip(RoundedCornerShape(14.dp)),
     ) {
         Box(
             Modifier
@@ -411,6 +413,10 @@ private fun Reflection(app: InstalledApp, width: Dp, height: Dp) {
                 .background(Brush.verticalGradient(listOf(Color(0xFF3A3A3C), Color(0xFF1C1C1E)))),
             contentAlignment = Alignment.Center,
         ) { CoverImage(app) }
+        // Цвет пола гасит отражение без отдельного буфера и маски DstIn на каждой обложке.
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+            listOf(Color(0xFF080D16).copy(alpha = 0.62f), Color(0xFF030509)),
+        )))
     }
 }
 
@@ -425,24 +431,24 @@ private fun ClassicBackdrop() {
     Box(
         Modifier
             .fillMaxSize()
-            .drawWithContent {
-                drawRect(
-                    Brush.radialGradient(
-                        listOf(Color(0x3380A8FF), Color.Transparent),
-                        center = Offset(size.width / 2f, size.height * 0.42f),
-                        radius = size.width * 0.55f,
-                    ),
+            .drawWithCache {
+                val light = Brush.radialGradient(
+                    listOf(Color(0x3380A8FF), Color.Transparent),
+                    center = Offset(size.width / 2f, size.height * 0.42f),
+                    radius = size.width * 0.55f,
                 )
                 // Линия горизонта пола.
-                drawRect(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.6f to Color.Transparent,
-                        0.605f to Color(0x1AFFFFFF),
-                        0.62f to Color(0x06FFFFFF),
-                        1f to Color.Transparent,
-                    ),
+                val floor = Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.6f to Color.Transparent,
+                    0.605f to Color(0x1AFFFFFF),
+                    0.62f to Color(0x06FFFFFF),
+                    1f to Color.Transparent,
                 )
+                onDrawBehind {
+                    drawRect(light)
+                    drawRect(floor)
+                }
             },
     )
 }
