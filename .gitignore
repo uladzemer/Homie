@@ -21,3 +21,5 @@ keystore.properties
 # Локальные инструкции для ИИ-помощников — только на машине владельца
 AGENTS.md
 CLAUDE.md
+.claude/
+plans/
