@@ -38,11 +38,10 @@ class RootTest {
         assertEquals(7, failed.exitCode)
         assertEquals("ok\nSuccess\n", failed.output)
         assertFalse(failed.success)
-        assertFalse("Success" in failed)
         assertFalse(failed.timedOut)
         val success = Root.execute(Command(text = "Success\n"), "true", 1000)
         assertTrue(success.success)
-        assertTrue("Success" in success)
+        assertEquals("Success\n", success.output)
     }
 
     @Test fun destroysTimedOutProcessAndEscalatesIfNeeded() {

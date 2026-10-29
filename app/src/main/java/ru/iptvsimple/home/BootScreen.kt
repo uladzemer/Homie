@@ -495,9 +495,6 @@ internal object BootImage {
 object Root {
     data class Output(val exitCode: Int?, val output: String, val timedOut: Boolean = false, val inputFailed: Boolean = false) {
         val success: Boolean get() = exitCode == 0 && !timedOut && !inputFailed
-
-        // Совместимость с проверкой «Success» у установщика обновлений.
-        operator fun contains(text: String): Boolean = success && output.contains(text)
     }
 
     fun available(): Boolean = run("id", 10).let { it.success && Regex("\\buid=0\\b").containsMatchIn(it.output) }

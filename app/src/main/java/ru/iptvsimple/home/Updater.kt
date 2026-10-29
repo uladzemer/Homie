@@ -158,7 +158,7 @@ object Updater {
                 cp '${file.path}' "${'$'}tmp" && chmod 644 "${'$'}tmp" && pm install -r "${'$'}tmp"
                 """,
             )
-            if (out.contains("Success")) return@withContext
+            if (out.success && "Success" in out.output) return@withContext
         }
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
