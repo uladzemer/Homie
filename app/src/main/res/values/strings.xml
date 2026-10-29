@@ -122,6 +122,11 @@
     <string name="boot_no_root">Needs root access. Allow Homie in the root manager and try again.</string>
     <string name="boot_no_image">No image found. Put a PNG at %1$s and try again.</string>
     <string name="boot_failed">Couldn’t apply: %1$s</string>
+    <string name="boot_timeout">Root command timed out. Try again.</string>
+    <string name="boot_backup_invalid">The logo backup is incomplete or damaged (size/SHA-256), or its partition size cannot be verified. Restoring from it is forbidden.</string>
+    <string name="boot_animation_backup_unknown">The original animation backup or its state is missing. Restore the firmware animation manually before trying again.</string>
+    <string name="boot_command_failed">Root command failed (exit %1$s): %2$s</string>
+    <string name="boot_partial">Some startup files may have changed. The selection was not saved. %1$s</string>
     <!-- Updates -->
     <string name="updates">Check for Updates</string>
     <string name="on">On</string>
