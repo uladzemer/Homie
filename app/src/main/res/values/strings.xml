@@ -111,23 +111,20 @@
     <string name="bg_blue">Blue</string>
 
     <!-- Boot screen -->
-    <string name="boot_screen">Startup Screen</string>
+    <string name="boot_screen">Android Boot Animation</string>
     <string name="boot_stock">As in Firmware</string>
     <string name="boot_homie">Homie</string>
     <string name="boot_custom">Your Image</string>
     <string name="boot_applying">Applying…</string>
-    <string name="boot_subtitle">Shown while the box starts up. Needs root. Your image: a light picture on a transparent background in %1$s.</string>
+    <string name="boot_subtitle">Changes only the Android boot animation. Needs root. Your image: a light picture on a transparent background in %1$s. As in Firmware also restores a logo changed by older versions when its backup verifies.</string>
     <string name="boot_done">Done. You will see it the next time the box starts.</string>
-    <string name="boot_done_animation">Done, but only the second screen changed: this box’s bootloader logo format is unknown.</string>
     <string name="boot_no_root">Needs root access. Allow Homie in the root manager and try again.</string>
     <string name="boot_no_image">No image found. Put a PNG at %1$s and try again.</string>
     <string name="boot_failed">Couldn’t apply: %1$s</string>
     <string name="boot_timeout">Root command timed out. Try again.</string>
-    <string name="boot_backup_invalid">The logo backup is incomplete or damaged (header/size/SHA-256). Restoring from it is forbidden.</string>
-    <string name="boot_animation_backup_unknown">The original animation backup or its state is missing. Restore the firmware animation manually before trying again.</string>
     <string name="boot_command_failed">Root command failed (exit %1$s): %2$s</string>
-    <string name="boot_partial">Some startup files may have changed. The selection was not saved. %1$s</string>
-    <string name="boot_rolled_back">The change failed; the original logo was restored. %1$s</string>
+    <string name="boot_old_logo_skipped">Old logo backup can’t be verified, left as is.</string>
+    <string name="boot_old_odm_skipped">Old ODM image backup can’t be verified, left as is.</string>
     <!-- Updates -->
     <string name="updates">Check for Updates</string>
     <string name="on">On</string>

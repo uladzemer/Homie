@@ -104,23 +104,20 @@
     <string name="bg_dark">Тёмный</string>
     <string name="bg_blue">Синий</string>
 
-    <string name="boot_screen">Заставка при включении</string>
+    <string name="boot_screen">Анимация загрузки Android</string>
     <string name="boot_stock">Как в прошивке</string>
     <string name="boot_homie">Homie</string>
     <string name="boot_custom">Своя картинка</string>
     <string name="boot_applying">Применяю…</string>
-    <string name="boot_subtitle">Видна, пока приставка загружается. Нужен root. Своя картинка — светлый рисунок на прозрачном фоне в %1$s.</string>
+    <string name="boot_subtitle">Меняется только анимация загрузки Android. Нужен root. Своя картинка — светлый рисунок на прозрачном фоне в %1$s. «Как в прошивке» также возвращает логотип, изменённый старыми версиями, если его копия проходит проверку.</string>
     <string name="boot_done">Готово. Будет видно при следующем включении.</string>
-    <string name="boot_done_animation">Готово, но заменена только вторая страница: формат логотипа загрузчика у этой приставки незнаком.</string>
     <string name="boot_no_root">Нужен root. Разрешите Homie в менеджере root и попробуйте снова.</string>
     <string name="boot_no_image">Картинки нет. Положите PNG в %1$s и попробуйте снова.</string>
     <string name="boot_failed">Не получилось: %1$s</string>
     <string name="boot_timeout">Истекло время ожидания команды root. Попробуйте снова.</string>
-    <string name="boot_backup_invalid">Копия раздела logo неполная или повреждена (заголовок/размер/SHA-256). Восстановление из неё запрещено.</string>
-    <string name="boot_animation_backup_unknown">Нет исходной анимации или записи о её наличии. Восстановите анимацию прошивки вручную перед новой попыткой.</string>
     <string name="boot_command_failed">Ошибка команды root (код %1$s): %2$s</string>
-    <string name="boot_partial">Часть файлов заставки могла измениться. Выбор не сохранён. %1$s</string>
-    <string name="boot_rolled_back">Изменение не удалось; исходный логотип восстановлен. %1$s</string>
+    <string name="boot_old_logo_skipped">Старую копию logo нельзя проверить, логотип оставлен как есть.</string>
+    <string name="boot_old_odm_skipped">Старую копию картинки ODM нельзя проверить, картинка оставлена как есть.</string>
     <string name="updates">Проверка обновлений</string>
     <string name="on">Включена</string>
     <string name="off">Выключена</string>

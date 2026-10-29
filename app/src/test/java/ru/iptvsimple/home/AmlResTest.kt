@@ -6,8 +6,6 @@ import java.util.zip.CRC32
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -42,26 +40,12 @@ class AmlResTest {
         sign(bytes)
     }
 
-    @Test fun replacementPreservesOtherEntriesAndPartitionSize() {
+    @Test fun validatesCompleteImageWithoutChangingIt() {
         val src = image()
         val original = src.copyOf()
-        val body = ByteArray(90) { (it + 30).toByte() }
-        val result = assertNotNull(AmlRes.replace(src, "bootup", body))
         assertTrue(AmlRes.isValid(src))
-        assertTrue(AmlRes.isValid(result))
-        val b = buffer(result)
-        assertEquals(src.size, result.size)
         assertContentEquals(original, src)
-        assertEquals(body.size, b.getInt(0x48))
-        assertEquals(192, b.getInt(0x4c))
-        assertEquals(320, b.getInt(0x8c))
-        assertContentEquals(body, result.copyOfRange(192, 282))
-        assertContentEquals(other, result.copyOfRange(320, 325))
-        assertEquals(0x12345678, b.getInt(0x80))
-        assertEquals(325, b.getInt(16))
-        assertEquals(CRC32().also { it.update(result, 4, 321) }.value.toInt().inv(), b.getInt(0))
-        assertContentEquals(ByteArray(result.size - 325), result.copyOfRange(325, result.size))
-        assertNotNull(AmlRes.replace(result, "bootup", bootup))
+        assertFalse(AmlRes.isValid(src.also { it[200] = 88 }))
     }
 
     @Test fun crcUsesComplementAndSkipsStoredChecksumAndPadding() {
@@ -72,24 +56,16 @@ class AmlResTest {
         assertEquals(0x340bc6d9, AmlRes.crc(data, 13))
     }
 
-    @Test fun refusesMissingEntryAndOversizedReplacement() {
-        assertNull(AmlRes.replace(image(), "missing", bootup))
-        assertNull(AmlRes.replace(image(), "bootup", ByteArray(1024)))
-    }
-
     @Test fun refusesTruncatedHeaderAndWrongFormat() {
         for (size in listOf(0, 7, 16, 63)) {
             assertFalse(AmlRes.isValid(ByteArray(size)))
-            assertNull(AmlRes.replace(ByteArray(size), "bootup", bootup))
         }
         for ((offset, value) in listOf(4 to 1, 8 to 0, 16 to 0, 16 to 2048, 20 to 0, 20 to 65, 24 to 0, 24 to -1)) {
             val src = image()
             buffer(src).putInt(offset, value)
             if (offset != 16) sign(src)
             assertFalse(AmlRes.isValid(src), "offset=$offset value=$value")
-            assertNull(AmlRes.replace(src, "bootup", bootup), "offset=$offset value=$value")
         }
-        assertNull(AmlRes.replace(image().also { it[200] = 88 }, "bootup", bootup))
     }
 
     @Test fun refusesMalformedTableEvenWithValidCrc() {
@@ -99,7 +75,6 @@ class AmlResTest {
             buffer(src).putInt(offset, value)
             sign(src)
             assertFalse(AmlRes.isValid(src), "offset=$offset value=$value")
-            assertNull(AmlRes.replace(src, "bootup", bootup), "offset=$offset value=$value")
         }
     }
 }

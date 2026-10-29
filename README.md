@@ -35,10 +35,12 @@ Free and open source (GPL‑3.0).
 - **Status buttons.** Network (Wi‑Fi strength, Ethernet or "no network"), power (sleep,
   restart), settings.
 - **Autostart.** Open a chosen app (for example IPTV) automatically after the box boots.
-- **Startup screen (root).** Replace the firmware boot logo and boot animation with a clean
+- **Android boot animation (root).** Replace only the Android boot animation with a clean
   Homie wordmark and a progress bar — or with your own image (`/sdcard/Homie/boot-logo.png`,
-  a light picture on a transparent background). Originals are backed up and can be restored
-  from Settings. Supported: Amlogic boxes (logo partition) + standard Android boot animation.
+  a light picture on a transparent background) in `/oem` or `/product`. The original animation
+  is backed up with SHA-256 and restored by **As in Firmware**. That option also restores a
+  bootloader logo / ODM image changed by older Homie versions when the old backup verifies;
+  unverified parts are left as is with a warning. Homie / Your Image leave the bootloader logo unchanged.
 - **English and Russian** — follows the system language.
 - **Private.** No ads, analytics or tracking. The INTERNET permission is used only to check
   GitHub releases once a day and download updates. Update checks are on by default and can be
@@ -102,9 +104,12 @@ Google LLC. App logos in the screenshots belong to their owners.
 - **Два стиля.** Современный — ряды плиток; Классика — карусель обложек с отражением.
 - **Фон.** Фотографии природы (меняются каждые 10 минут) или одна из галереи, тёмный или синий.
 - **Автозапуск.** Приложение (например, IPTV), которое откроется само после включения приставки.
-- **Заставка при включении (нужен root).** Надпись Homie с полоской загрузки или своя картинка
-  (`/sdcard/Homie/boot-logo.png`, светлый рисунок на прозрачном фоне) вместо заставки прошивки.
-  Оригиналы сохраняются, «Как в прошивке» возвращает их.
+- **Анимация загрузки Android (нужен root).** Надпись Homie с полоской загрузки или своя картинка
+  (`/sdcard/Homie/boot-logo.png`, светлый рисунок на прозрачном фоне) вместо анимации Android
+  в `/oem` или `/product`. Исходная анимация сохраняется с SHA-256; «Как в прошивке» возвращает её.
+  Этот пункт также возвращает логотип загрузчика / картинку ODM, изменённые старыми версиями Homie,
+  если их копии проходят проверку. Непроверенные части остаются как есть с предупреждением.
+  Homie / «Своя картинка» не меняют логотип загрузчика.
 
 **Установка:** APK из [Releases](../../releases), затем «Домой» на пульте → Homie. Для кнопки
 питания один раз включите Homie в «Специальных возможностях».

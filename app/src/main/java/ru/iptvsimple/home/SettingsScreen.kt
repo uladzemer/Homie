@@ -131,7 +131,7 @@ fun SettingsScreen(
                 Note(
                     when (result) {
                         BootScreen.Result.Done -> stringResource(R.string.boot_done)
-                        BootScreen.Result.DoneAnimationOnly -> stringResource(R.string.boot_done_animation)
+                        is BootScreen.Result.DoneWithWarning -> stringResource(R.string.boot_done) + " " + result.message
                         BootScreen.Result.NoRoot -> stringResource(R.string.boot_no_root)
                         BootScreen.Result.NoCustomImage -> stringResource(R.string.boot_no_image, BootScreen.CUSTOM_PATH)
                         is BootScreen.Result.Failed -> stringResource(R.string.boot_failed, result.message)
@@ -271,7 +271,7 @@ fun SettingsScreen(
                     bootStatus = null
                     scope.launch {
                         val result = withContext(Dispatchers.IO) { BootScreen.apply(context, choice) }
-                        if (result == BootScreen.Result.Done || result == BootScreen.Result.DoneAnimationOnly) bootLogo = choice
+                        if (result == BootScreen.Result.Done || result is BootScreen.Result.DoneWithWarning) bootLogo = choice
                         bootStatus = result
                         bootBusy = false
                     }

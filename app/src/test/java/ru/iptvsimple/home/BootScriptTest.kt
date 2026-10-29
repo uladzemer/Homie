@@ -1,10 +1,9 @@
 package ru.iptvsimple.home
 
 import java.io.File
-import java.nio.file.Files
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.security.MessageDigest
+import java.nio.file.Files
 import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -12,48 +11,49 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Настоящая оболочка и обычные файлы вместо разделов; su и записи в прошивку здесь нет. */
+/** Настоящая оболочка, но все разделы, точки монтирования и копии — обычные файлы в temp. */
 class BootScriptTest {
     private class Fixture : AutoCloseable {
         val dir = Files.createTempDirectory("homie-boot-test-").toFile()
         val backup = File(dir, "backup").apply { mkdir() }
-        val partition = File(dir, "partition").apply { writeBytes(image()) }
-        private val base = dir.absolutePath.replace('\\', '/')
+        val partition = File(dir, "partition").apply { writeBytes(ByteArray(1024) { 42 }) }
+        val odm = File(dir, "odm/logo_files/bootup.bmp").apply { requireNotNull(parentFile).mkdirs(); writeText("BMcurrent") }
+        val zip = File(dir, "new.zip").apply { writeText("new animation") }
+        init { File(dir, "mounts").writeText("dev ./oem ext4 ro 0 0\n") }
 
         fun file(name: String) = File(backup, name)
-        fun save(name: String, bytes: ByteArray = image()) {
-            file(name).writeBytes(bytes)
-            val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-            file("$name.sha256").writeText("$hash\n")
-        }
-
-        fun run(body: String, before: String = ""): Root.Output = execute(BootScreen.script(body), before)
-        fun migrate(before: String = "", afterStage: () -> Unit = {}): Root.Output {
+        fun animation(p: String = "oem") = File(dir, "$p/media/bootanimation.zip").also { requireNotNull(it.parentFile).mkdirs() }
+        fun run(body: String, before: String = "") = execute(BootScreen.script(body), before)
+        fun install(before: String = "") = execute(BootScreen.animationScript("./new.zip"), before)
+        fun restore(before: String = "") = execute(BootScreen.animationScript(null), before)
+        fun legacy(before: String = "", afterStage: () -> Unit = {}): Root.Output {
+            val stage = Files.createTempDirectory(dir.toPath(), "stage-").toFile()
             var phase = 0
-            return BootScreen.migrateLegacy(dir) { script ->
-                if (phase++ == 1) afterStage()
-                execute(script, before)
-            }
+            return try {
+                BootScreen.restoreLegacy(stage) {
+                    if (phase++ == 1) afterStage()
+                    execute(it, before)
+                }
+            } finally { stage.deleteRecursively() }
         }
 
         private fun execute(source: String, before: String): Root.Output {
             val shell = listOf("C:/Program Files/Git/bin/bash.exe", "/bin/sh").firstOrNull { File(it).isFile }
             assumeTrue("Нужна POSIX-оболочка (в Windows — Git Bash)", shell != null)
-            val script = source
-                .replace("/data/local/homie-boot", "$base/backup")
-                .replace("/dev/block/logo", "$base/partition")
-                .replace("/mnt/vendor/odm_ext", "$base/odm")
+            val script = source.replace("/data/local/homie-boot", "./backup").replace("/dev/block/logo", "./partition")
+                .replace("/mnt/vendor/odm_ext", "./odm").replace("/proc/mounts", "./mounts")
+                .replace("/oem", "./oem").replace("/product", "./product")
             val prelude = """
                 PATH="/usr/bin:/bin:${'$'}PATH"
-                getprop() { echo test-firmware; }
                 blockdev() { echo 1024; }
-                mount() { return 0; }
+                mount() { echo "${'$'}2 ${'$'}3" >> mounts.log; }
                 sync() { return 0; }
             """.trimIndent()
-            val process = ProcessBuilder(requireNotNull(shell)).redirectErrorStream(true).start()
+            val process = ProcessBuilder(requireNotNull(shell)).directory(dir).redirectErrorStream(true).start()
             return Root.execute(process, "$prelude\n$before\n$script", 10000)
         }
 
+        fun mounts() = File(dir, "mounts.log").takeIf { it.exists() }?.readText().orEmpty()
         override fun close() { dir.deleteRecursively() }
     }
 
@@ -61,269 +61,186 @@ class BootScriptTest {
         private fun image() = ByteArray(1024).also {
             val b = ByteBuffer.wrap(it).order(ByteOrder.LITTLE_ENDIAN)
             "AML_RES!".toByteArray().copyInto(it, 8)
-            b.putInt(4, 2)
-            b.putInt(16, 132)
-            b.putInt(20, 1)
-            b.putInt(24, 64)
-            b.putInt(0x48, 4)
-            b.putInt(0x4c, 128)
-            "bootup".toByteArray().copyInto(it, 0x60)
+            b.putInt(4, 2); b.putInt(16, 132); b.putInt(20, 1); b.putInt(24, 64)
+            b.putInt(0x48, 4); b.putInt(0x4c, 128)
             b.putInt(0, AmlRes.crc(it, 132))
         }
     }
 
-    @Test fun missingToolsFailBeforeAnyWrite() {
-        for (tool in listOf("blockdev", "sha256sum", "stat", "cmp", "dd", "mount")) Fixture().use { f ->
-            val out = f.run("echo touched > /data/local/homie-boot/touched", "command() { [ \"${'$'}2\" != '$tool' ]; }")
+    @Test fun preflightFailsBeforeAnyWrite() {
+        for (tool in listOf("sha256sum", "cmp", "mount", "cp", "mv", "sync")) Fixture().use { f ->
+            val out = f.install("command() { [ \"${'$'}2\" != '$tool' ]; }")
             assertEquals(64, out.exitCode, out.output)
             assertTrue("tool $tool missing" in out.output)
-            assertFalse(f.file("touched").exists())
+            assertFalse(f.file("animation.state").exists())
+            assertTrue(f.mounts().isEmpty())
         }
     }
 
-    @Test fun stepPreservesStatusInGuardedContextsAndClearsChild() {
+    @Test fun stepPropagatesChildStatusInGuardedContexts() {
         for (body in listOf(
             "step sh -c 'exit 9' || [ \"${'$'}?\" = 9 ]",
             "if step sh -c 'exit 9'; then exit 2; else [ \"${'$'}?\" = 9 ]; fi",
             "if step sh -c 'exit 9' && true; then exit 2; fi",
-        )) Fixture().use { f ->
-            val out = f.run("$body\n[ -z \"${'$'}CHILD\" ]")
-            assertTrue(out.success, out.output)
+        )) Fixture().use { f -> assertTrue(f.run("$body\n[ -z \"${'$'}CHILD\" ]").success) }
+    }
+
+    @Test fun installOnlyChangesAnimationAndKeepsFirstBackup() = Fixture().use { f ->
+        f.animation().writeText("original")
+        f.file("logo.img").writeText("untrusted logo")
+        f.file("odm_bootup.bmp").writeText("untrusted odm")
+        f.file("firmware").writeText("previous firmware")
+        val partition = f.partition.readBytes()
+        assertTrue(f.install().success)
+        assertEquals("./oem present\n", f.file("animation.state").readText())
+        assertEquals("original", f.file("bootanimation.zip").readText())
+        assertTrue(f.run("verify_animation").success)
+        assertEquals("new animation", f.animation().readText())
+        f.zip.writeText("second animation")
+        assertTrue(f.install().success)
+        assertEquals("original", f.file("bootanimation.zip").readText())
+        assertContentEquals(partition, f.partition.readBytes())
+        assertEquals("BMcurrent", f.odm.readText())
+        assertTrue(f.file("logo.img").exists())
+        assertTrue(f.restore().success)
+        assertEquals("original", f.animation().readText())
+        assertTrue(f.mounts().endsWith("remount,ro ./oem\n"))
+    }
+
+    @Test fun productDetectionAndOriginallyAbsentRestore() = Fixture().use { f ->
+        File(f.dir, "mounts").writeText("dev ./product ext4 ro 0 0\n")
+        assertTrue(f.install().success)
+        assertEquals("./product absent\n", f.file("animation.state").readText())
+        assertFalse(f.file("bootanimation.zip").exists())
+        assertTrue(f.animation("product").exists())
+        assertTrue(f.restore().success)
+        assertFalse(f.animation("product").exists())
+    }
+
+    @Test fun legacyAnimationPathKeepsOldRemovalSemantics() {
+        for (p in listOf("oem", "product")) Fixture().use { f ->
+            f.file("anim_path").writeText("./$p\n")
+            f.animation(p).writeText("old Homie animation")
+            assertTrue(f.install().success)
+            assertEquals("./$p absent\n", f.file("animation.state").readText())
+            assertFalse(f.file("bootanimation.zip").exists())
+            assertTrue(f.restore().success)
+            assertFalse(f.animation(p).exists())
         }
     }
 
-    @Test fun guardedValidatorsAndBackupCopyDoNotIgnoreErrors() = Fixture().use { f ->
-        assertTrue(f.run("if aml_header /dev/null; then exit 2; fi\nEXPECTED=bad\nif valid_hash; then exit 3; fi").success)
-        f.save("logo.img")
-        assertEquals(65, f.run("if verify_logo /data/local/homie-boot/logo.img; then exit 2; fi", "sha256sum() { return 9; }").exitCode)
-        assertEquals(72, f.run("if verify_file /data/local/homie-boot/logo.img; then exit 2; fi", "sha256sum() { return 9; }").exitCode)
-        val out = f.run("save_file /dev/block/logo /data/local/homie-boot/copied || exit \"${'$'}?\"", "cp() { return 9; }")
-        assertEquals(9, out.exitCode, out.output)
-        assertFalse(f.file("copied").exists())
+    @Test fun stockWithoutHistoryLeavesFactoryAnimationAlone() = Fixture().use { f ->
+        f.animation().writeText("factory")
+        assertTrue(f.restore().success)
+        assertEquals("factory", f.animation().readText())
+        assertFalse(f.file("animation.state").exists())
+        assertTrue(f.mounts().isEmpty())
     }
 
-    @Test fun oldLogoIsAdoptedOnlyAfterFullAmlValidationAndKeepsUnknownProvenance() {
+    @Test fun invalidStateAndBackupRefuseBeforeRemount() {
+        for (state in listOf("/system absent\n", "./oem unknown\n", "./oem present extra\n", "./oem present\n")) Fixture().use { f ->
+            f.file("animation.state").writeText(state)
+            assertFalse(f.install().success)
+            assertTrue(f.mounts().isEmpty())
+        }
         Fixture().use { f ->
-            f.file("logo.img").writeBytes(image())
-            val out = f.migrate()
-            assertTrue(out.success, out.output)
-            assertTrue(f.file("logo.img.sha256").isFile)
-            assertEquals("legacy\n", f.file("firmware").readText())
-            assertTrue(f.run("check_firmware\nverify_backups\nbind_firmware").success)
-            assertEquals("legacy\n", f.file("firmware").readText())
-        }
-        val invalid = listOf(ByteArray(1024), image().copyOf(512), ByteArray(8), image().also { it[128] = 1 }, image().also {
-            val b = ByteBuffer.wrap(it).order(ByteOrder.LITTLE_ENDIAN)
-            b.putInt(0x4c, Int.MAX_VALUE)
-            b.putInt(0, AmlRes.crc(it, 132))
-        }, image().also {
-            "AML_RES!".toByteArray().copyInto(it, 0)
-            it[8] = 0
-        })
-        for (bytes in invalid) Fixture().use { f ->
-            f.file("logo.img").writeBytes(bytes)
-            val out = f.migrate()
-            assertEquals(67, out.exitCode, out.output)
-            assertTrue("old logo backup cannot be trusted" in out.output)
-            assertFalse(f.file("logo.img.sha256").exists())
-            assertContentEquals(image(), f.partition.readBytes())
-        }
-    }
-
-    @Test fun oldAnimationPathMigratesWithOldRemovalSemantics() {
-        for (path in listOf("/oem", "/product")) Fixture().use { f ->
-            f.file("anim_path").writeText("$path\n")
-            val out = f.run("migrate_animation\nanimation_state")
-            assertTrue(out.success, out.output)
-            assertEquals("$path absent\n", f.file("animation.state").readText())
-            assertEquals("legacy\n", f.file("firmware").readText())
-        }
-        for (path in listOf("", "/system", "/oem/media", "/oem extra", "/oem\n/product")) Fixture().use { f ->
-            f.file("anim_path").writeText(path)
-            assertEquals(73, f.run("migrate_animation").exitCode)
+            f.file("anim_path").writeText("/system\n")
+            assertEquals(66, f.install().exitCode)
             assertFalse(f.file("animation.state").exists())
         }
-    }
-
-    @Test fun oldOdmBackupNeedsBmpMagicAndKeepsLegacyBinding() {
         Fixture().use { f ->
-            f.file("odm_bootup.bmp").writeText("BMold-bitmap")
-            assertTrue(f.migrate().success)
-            assertTrue(f.run("verify_backups\ncheck_firmware\nbind_firmware").success)
-            assertEquals("legacy\n", f.file("firmware").readText())
-        }
-        for (bytes in listOf(byteArrayOf(), "B".toByteArray(), "wrong".toByteArray())) Fixture().use { f ->
-            f.file("odm_bootup.bmp").writeBytes(bytes)
-            val out = f.migrate()
-            assertEquals(67, out.exitCode, out.output)
-            assertFalse(f.file("odm_bootup.bmp.sha256").exists())
-        }
-        Fixture().use { f ->
-            f.file("odm_bootup.bmp").writeText("BMmodern")
-            f.file("firmware").writeText("test-firmware\n")
-            assertEquals(72, f.migrate().exitCode)
-        }
-    }
-
-    @Test fun legacyLogoChangedAfterStagingCannotBeAdopted() = Fixture().use { f ->
-        f.file("logo.img").writeBytes(image())
-        val out = f.migrate { f.file("logo.img").appendText("changed") }
-        assertEquals(67, out.exitCode, out.output)
-        assertFalse(f.file("logo.img.sha256").exists())
-        assertFalse(f.file("firmware").exists())
-    }
-
-    @Test fun legacyHashAlwaysBelongsToTheParsedStagingFile() = Fixture().use { f ->
-        f.file("logo.img").writeBytes(image())
-        val backup = f.file("logo.img").invariantSeparatorsPath
-        val out = f.migrate("cmp() { command cmp \"${'$'}@\" || return ${'$'}?; echo changed >> '$backup'; }")
-        assertTrue(out.success, out.output)
-        assertEquals(65, f.run("verify_backups").exitCode)
-        assertContentEquals(image(), f.partition.readBytes())
-    }
-
-    @Test fun temporaryFilesAloneAreNotABackup() = Fixture().use { f ->
-        for (name in listOf("logo.img.tmp", "logo.img.sha256.tmp", "animation.state.tmp", "firmware.tmp")) {
-            f.file(name).writeText("interrupted")
-        }
-        assertTrue(f.migrate().success)
-        assertTrue(f.run("verify_backups").success)
-        assertFalse(f.file("logo.img").exists())
-        assertFalse(f.file("firmware").exists())
-    }
-
-    @Test fun publishingHashFirstMakesInterruptedPublicationFailSafe() = Fixture().use { f ->
-        f.file("logo.img.tmp").writeBytes(image())
-        val out = f.run("publish_file /data/local/homie-boot/logo.img", """
-            mv() {
-              case "${'$'}1" in */logo.img.tmp) return 9;; esac
-              command mv "${'$'}@"
+            f.animation().writeText("original")
+            assertTrue(f.install().success)
+            for (damage in listOf("missing", "changed")) {
+                if (damage == "missing") f.file("bootanimation.zip.sha256").delete()
+                else f.file("bootanimation.zip.sha256").writeText("0".repeat(64))
+                assertEquals(72, f.restore().exitCode)
+                assertEquals("new animation", f.animation().readText())
             }
-        """.trimIndent())
+        }
+    }
+
+    @Test fun incompleteBackupPublicationNeverLosesTheOriginal() = Fixture().use { f ->
+        f.animation().writeText("original")
+        val out = f.install("mv() { case \"${'$'}1\" in */bootanimation.zip.tmp) return 9;; esac; command mv \"${'$'}@\"; }")
         assertEquals(9, out.exitCode, out.output)
+        assertTrue(f.file("bootanimation.zip.sha256").exists())
+        assertFalse(f.file("animation.state").exists())
+        assertEquals("original", f.animation().readText())
+        assertEquals(72, f.install().exitCode)
+    }
+
+    @Test fun failedAtomicReplaceKeepsTargetAndAlwaysRemountsReadOnly() = Fixture().use { f ->
+        f.animation().writeText("original")
+        assertTrue(f.run("animation_state install").success)
+        val out = f.install("cmp() { return 9; }")
+        assertEquals(9, out.exitCode, out.output)
+        assertEquals("original", f.animation().readText())
+        assertFalse(File(f.animation().path + ".tmp").exists())
+        assertTrue(f.mounts().endsWith("remount,ro ./oem\n"))
+        assertEquals("original", f.file("bootanimation.zip").readText())
+    }
+
+    @Test fun timeoutAlsoRemountsReadOnlyAndKeepsBackup() = Fixture().use { f ->
+        f.animation().writeText("original")
+        assertTrue(f.run("animation_state install").success)
+        val out = f.run("rw /oem\nstep sleep 5", "sleep() { if [ \"${'$'}1\" = 75 ]; then command sleep 0.1; else command sleep \"${'$'}1\"; fi; }")
+        assertTrue(out.timedOut, out.output)
+        assertTrue(f.mounts().endsWith("remount,ro ./oem\n"))
+        assertEquals("original", f.file("bootanimation.zip").readText())
+    }
+
+    @Test fun verifiedOldLogoAndBmpRestoreOnceAndDeleteBackups() = Fixture().use { f ->
+        f.file("logo.img").writeBytes(image())
+        f.file("odm_bootup.bmp").writeText("BMoriginal")
+        val out = f.legacy()
+        assertTrue(out.success, out.output)
+        assertContentEquals(image(), f.partition.readBytes())
+        assertEquals("BMoriginal", f.odm.readText())
         assertFalse(f.file("logo.img").exists())
-        assertTrue(f.file("logo.img.sha256").isFile)
-        assertEquals(65, f.run("verify_backups").exitCode)
+        assertFalse(f.file("odm_bootup.bmp").exists())
+        f.partition.writeText("changed later")
+        assertTrue(f.legacy().success)
+        assertEquals("changed later", f.partition.readText())
     }
 
-    @Test fun fileBackupsHaveChecksumsAndRejectMissingOrDamagedSidecars() {
-        for (name in listOf("odm_bootup.bmp", "bootanimation.zip")) Fixture().use { f ->
-            val out = f.run("save_file /dev/block/logo /data/local/homie-boot/$name\nverify_backups")
+    @Test fun unverifiedLogoIsSkippedWhileValidOdmStillRestores() {
+        for (bytes in listOf(ByteArray(1024), image().copyOf(512), image().also { it[128] = 1 }, image().also {
+            val b = ByteBuffer.wrap(it).order(ByteOrder.LITTLE_ENDIAN)
+            b.putInt(0x4c, Int.MAX_VALUE); b.putInt(0, AmlRes.crc(it, 132))
+        })) Fixture().use { f ->
+            val original = f.partition.readBytes()
+            f.file("logo.img").writeBytes(bytes)
+            f.file("odm_bootup.bmp").writeText("BMoriginal")
+            val out = f.legacy()
             assertTrue(out.success, out.output)
-            assertContentEquals(image(), f.file(name).readBytes())
-            f.file("$name.sha256").delete()
-            assertEquals(72, f.run("verify_backups").exitCode)
-            f.save(name)
-            f.file(name).appendText("damage")
-            assertEquals(72, f.run("verify_backups").exitCode)
+            assertTrue("skipped:logo" in out.output)
+            assertContentEquals(original, f.partition.readBytes())
+            assertTrue(f.file("logo.img").exists())
+            assertEquals("BMoriginal", f.odm.readText())
         }
     }
 
-    @Test fun animationStateCannotRestoreAnUnverifiedFile() = Fixture().use { f ->
-        f.file("animation.state").writeText("/product present\n")
-        f.file("bootanimation.zip").writeText("no sidecar")
-        assertEquals(72, f.run("animation_state").exitCode)
-        f.save("bootanimation.zip")
-        assertTrue(f.run("animation_state").success)
-    }
-
-    @Test fun modernLogoWithLostChecksumCannotBeAdoptedAsLegacy() = Fixture().use { f ->
-        f.file("firmware").writeText("test-firmware\n")
+    @Test fun badBmpAndUnavailableLogoSizeAreSkipped() = Fixture().use { f ->
         f.file("logo.img").writeBytes(image())
-        assertEquals(65, f.migrate().exitCode)
-        assertFalse(f.file("logo.img.sha256").exists())
+        f.file("odm_bootup.bmp").writeText("invalid")
+        val original = f.partition.readBytes()
+        val out = f.legacy("blockdev() { return 9; }")
+        assertTrue(out.success, out.output)
+        assertTrue("skipped:logo" in out.output)
+        assertTrue("skipped:odm" in out.output)
+        assertContentEquals(original, f.partition.readBytes())
+        assertEquals("BMcurrent", f.odm.readText())
+        assertTrue(f.file("odm_bootup.bmp").exists())
     }
 
-    @Test fun changedFirmwareRefusesBeforeMigrationOrWrite() = Fixture().use { f ->
-        f.file("firmware").writeText("previous-firmware\n")
+    @Test fun legacyLogoUsesValidatedStagingAndFailedWriteKeepsBackup() = Fixture().use { f ->
         f.file("logo.img").writeBytes(image())
-        val out = f.migrate()
-        assertEquals(68, out.exitCode, out.output)
-        assertTrue("firmware changed, backups are from previous firmware" in out.output)
-        assertFalse(f.file("logo.img.sha256").exists())
+        val out = f.legacy { f.file("logo.img").writeBytes(ByteArray(1024)) }
+        assertTrue(out.success, out.output)
         assertContentEquals(image(), f.partition.readBytes())
-    }
-
-    @Test fun partitionErrorsHaveTheirOwnCode() = Fixture().use { f ->
-        val out = f.run("partition_size", "blockdev() { echo bad-size; }")
-        assertEquals(70, out.exitCode, out.output)
-        assertTrue("logo partition size invalid" in out.output)
-    }
-
-    @Test fun failureAfterLogoWriteRollsBackIncludingWatchdogAndRemountFailure() {
-        for (failure in listOf("step cmp -s /dev/null /dev/block/logo", "exit 7", "kill -TERM \"${'$'}MAIN\"", "rw /product")) {
-            Fixture().use { f ->
-                f.save("logo.img")
-                val out = f.run("""
-                    check_firmware
-                    verify_logo /data/local/homie-boot/logo.img
-                    ROLLBACK=1
-                    echo writing:logo
-                    echo changed > /dev/block/logo
-                    $failure
-                """.trimIndent(), "mount() { return 1; }")
-                assertFalse(out.success, out.output)
-                assertTrue("rolled back:logo" in out.output, out.output)
-                if (failure == "rw /product") {
-                    assertTrue(out.output.indexOf("remount-ro:/product") < out.output.indexOf("rolled back:logo"), out.output)
-                }
-                assertContentEquals(image(), f.partition.readBytes())
-            }
-        }
-    }
-
-    @Test fun finalRemountFailureDoesNotUndoASuccessfulInstall() = Fixture().use { f ->
-        f.save("logo.img")
-        val out = f.run("""
-            ROLLBACK=1
-            echo changed > /dev/block/logo
-            rw /product
-        """.trimIndent(), "mount() { [ \"${'$'}2\" = remount,rw ]; }")
-        assertEquals(74, out.exitCode, out.output)
-        assertTrue("remount-ro:/product" in out.output)
-        assertFalse("rolled back:logo" in out.output)
-        assertEquals("changed\n", f.partition.readText())
-    }
-
-    @Test fun rollbackWatchdogStopsAStalledWrite() = Fixture().use { f ->
-        f.save("logo.img")
-        val out = f.run("""
-            ROLLBACK=1
-            dd() { command sleep 2; echo late > /dev/block/logo; }
-            exit 7
-        """.trimIndent(), "sleep() { if [ \"${'$'}1\" = 25 ]; then command sleep 0.1; else command sleep \"${'$'}1\"; fi; }")
-        assertEquals(76, out.exitCode, out.output)
-        assertTrue("rollback failed:logo (timeout)" in out.output)
-        assertContentEquals(image(), f.partition.readBytes())
-    }
-
-    @Test fun rollbackRefusesBackupDamagedAfterInitialVerification() = Fixture().use { f ->
-        f.save("logo.img")
-        val out = f.run("""
-            check_firmware
-            verify_logo /data/local/homie-boot/logo.img
-            ROLLBACK=1
-            echo writing:logo
-            echo changed > /dev/block/logo
-            echo damage > /data/local/homie-boot/logo.img
-            exit 7
-        """.trimIndent())
-        assertEquals(76, out.exitCode, out.output)
-        assertTrue("rollback failed:logo" in out.output)
-        assertEquals("changed\n", f.partition.readText())
-    }
-
-    @Test fun rollbackReportsAWriteFailure() = Fixture().use { f ->
-        f.save("logo.img")
-        val out = f.run("""
-            check_firmware
-            verify_logo /data/local/homie-boot/logo.img
-            ROLLBACK=1
-            echo writing:logo
-            dd() { return 8; }
-            exit 7
-        """.trimIndent())
-        assertEquals(76, out.exitCode, out.output)
-        assertTrue("rollback failed:logo" in out.output)
+        f.file("logo.img").writeBytes(image())
+        assertEquals(9, f.legacy("dd() { return 9; }").exitCode)
+        assertTrue(f.file("logo.img").exists())
     }
 }
