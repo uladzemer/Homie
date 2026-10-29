@@ -6,6 +6,17 @@ import kotlin.test.assertNotNull
 
 class CarouselSelectionTest {
     @Test
+    fun disappearingRowUsesVisibleFallbackWithoutReturningWhenItReappears() {
+        val fallback = visibleCarouselRow(20, listOf(10, null))
+        assertEquals(10, fallback)
+        assertEquals(10, visibleCarouselRow(fallback, listOf(10, 20, null)))
+        assertEquals(null, visibleCarouselRow(20, listOf(null)))
+        assertEquals(null, visibleCarouselRow(20, emptyList()))
+        assertEquals(null, visibleCarouselRow(null, listOf(10, null)))
+        assertEquals(20, visibleCarouselRow(20, listOf(10, 20)))
+    }
+
+    @Test
     fun moveIntoEmptyRowKeepsPackageSelected() {
         val config = HomeConfig(rows = listOf(
             HomeRow(10, "A", listOf("b")),

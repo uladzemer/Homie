@@ -40,6 +40,7 @@ object Updater {
     private const val LATEST = "https://api.github.com/repos/uladzemer/Homie/releases/latest"
     private const val CHECK_EVERY = 24 * 3600_000L
     private const val SNOOZE = 7 * 24 * 3600_000L
+    private val activeFiles = HashSet<File>()
 
     class Release(val version: String, val apkUrl: String)
 
@@ -97,69 +98,105 @@ object Updater {
     }
 
     /** Скачивает APK в кэш; [onProgress] — доля от 0 до 1. */
-    suspend fun download(context: Context, release: Release, onProgress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
-        coroutineScope {
-            val conn = URL(release.apkUrl).openConnection() as HttpURLConnection
-            conn.connectTimeout = 15_000
-            conn.readTimeout = 30_000
-            val file = File.createTempFile("update-", ".apk.part", context.cacheDir)
-            val completed = File(file.path.removeSuffix(".part"))
-            // Отмена разрывает соединение, даже если чтение ещё ждёт данные.
-            val disconnect = launch(start = CoroutineStart.UNDISPATCHED) {
-                try { awaitCancellation() } finally { conn.disconnect() }
-            }
-            try {
-                if (conn.responseCode != 200) error("HTTP ${conn.responseCode}")
-                val total = conn.contentLengthLong
-                conn.inputStream.use { input ->
-                    file.outputStream().use { out ->
-                        val buf = ByteArray(64 * 1024)
-                        var done = 0L
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            val n = input.read(buf)
-                            coroutineContext.ensureActive()
-                            if (n < 0) break
-                            out.write(buf, 0, n)
-                            done += n
-                            if (total > 0) onProgress(done.toFloat() / total)
+    suspend fun download(context: Context, release: Release, onProgress: (Float) -> Unit): File {
+        var pending: File? = null
+        try {
+            return withContext(Dispatchers.IO) {
+                coroutineScope {
+                    val conn = URL(release.apkUrl).openConnection() as HttpURLConnection
+                    conn.connectTimeout = 15_000
+                    conn.readTimeout = 30_000
+                    val file = synchronized(activeFiles) {
+                        context.cacheDir.listFiles()?.filter {
+                            it.name.startsWith("update") && (it.name.endsWith(".apk") || it.name.endsWith(".part")) && it !in activeFiles
+                        }?.forEach { it.delete() }
+                        File.createTempFile("update-", ".apk.part", context.cacheDir).also {
+                            activeFiles += it
+                            activeFiles += File(it.path.removeSuffix(".part"))
                         }
-                        check(total < 0 || done == total) { "incomplete APK" }
+                    }
+                    val completed = File(file.path.removeSuffix(".part"))
+                    pending = completed
+                    // Отмена разрывает соединение, даже если чтение ещё ждёт данные.
+                    val disconnect = launch(start = CoroutineStart.UNDISPATCHED) {
+                        try { awaitCancellation() } finally { conn.disconnect() }
+                    }
+                    try {
+                        if (conn.responseCode != 200) error("HTTP ${conn.responseCode}")
+                        val total = conn.contentLengthLong
+                        conn.inputStream.use { input ->
+                            file.outputStream().use { out ->
+                                val buf = ByteArray(64 * 1024)
+                                var done = 0L
+                                while (true) {
+                                    coroutineContext.ensureActive()
+                                    val n = input.read(buf)
+                                    coroutineContext.ensureActive()
+                                    if (n < 0) break
+                                    out.write(buf, 0, n)
+                                    done += n
+                                    if (total > 0) onProgress(done.toFloat() / total)
+                                }
+                                check(total < 0 || done == total) { "incomplete APK" }
+                            }
+                        }
+                        coroutineContext.ensureActive()
+                        // Чужой или старый файл не ставим: проверяем пакет и номер версии.
+                        val info = context.packageManager.getPackageArchiveInfo(file.path, 0)
+                        val current = context.packageManager.getPackageInfo(context.packageName, 0)
+                        @Suppress("DEPRECATION")
+                        if (info?.packageName != context.packageName || info.versionCode <= current.versionCode) {
+                            error("bad APK")
+                        }
+                        coroutineContext.ensureActive()
+                        check(file.renameTo(completed)) { "rename failed" }
+                        completed
+                    } finally {
+                        disconnect.cancel()
+                        conn.disconnect()
+                        file.delete()
+                        synchronized(activeFiles) { activeFiles -= file }
                     }
                 }
-                coroutineContext.ensureActive()
-                // Чужой или старый файл не ставим: проверяем пакет и номер версии.
-                val info = context.packageManager.getPackageArchiveInfo(file.path, 0)
-                val current = context.packageManager.getPackageInfo(context.packageName, 0)
-                @Suppress("DEPRECATION")
-                if (info?.packageName != context.packageName || info.versionCode <= current.versionCode) {
-                    error("bad APK")
-                }
-                coroutineContext.ensureActive()
-                check(file.renameTo(completed)) { "rename failed" }
-                completed
-            } finally {
-                disconnect.cancel()
-                conn.disconnect()
-                file.delete()
-                if (!coroutineContext[Job]!!.isActive) completed.delete()
             }
+        } catch (e: Throwable) {
+            // withContext может отмениться уже после rename, при возврате на главный поток.
+            pending?.let { file ->
+                file.delete()
+                synchronized(activeFiles) { activeFiles -= file }
+            }
+            throw e
         }
     }
 
     /** Ставит скачанный APK. После удачной установки система сама перезапустит главный экран. */
-    suspend fun install(context: Context, file: File) = withContext(Dispatchers.IO) {
-        installError = null
-        if (Root.available()) {
-            val out = Root.run(
-                """
-                tmp=${'$'}(mktemp /data/local/tmp/homie-update.XXXXXXXX) || exit 1
-                trap 'rm -f "${'$'}tmp"' EXIT HUP INT TERM
-                cp '${file.path}' "${'$'}tmp" && chmod 644 "${'$'}tmp" && pm install -r "${'$'}tmp"
-                """,
-            )
-            if (out.success && "Success" in out.output) return@withContext
+    suspend fun install(context: Context, file: File) {
+        try {
+            withContext(Dispatchers.IO) { installApk(context, file) }
+        } finally {
+            file.delete()
+            synchronized(activeFiles) { activeFiles -= file }
         }
+    }
+
+    private suspend fun installApk(context: Context, file: File) {
+        installError = null
+        val root = Root.available()
+        coroutineContext.ensureActive()
+        if (root) {
+            val script = """
+                tmp=${'$'}(mktemp /data/local/tmp/homie-update.XXXXXXXX) || exit 1
+                trap 'rm -f "${'$'}tmp"' EXIT
+                trap 'exit 129' HUP
+                trap 'exit 130' INT
+                trap 'exit 143' TERM
+                cp '${file.path}' "${'$'}tmp" && chmod 644 "${'$'}tmp" && pm install -r "${'$'}tmp"
+                """
+            coroutineContext.ensureActive()
+            val out = Root.run(script)
+            if (out.success && "Success" in out.output) return
+        }
+        coroutineContext.ensureActive()
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         params.setAppPackageName(context.packageName)

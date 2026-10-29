@@ -2,6 +2,22 @@
 
 ![Homie home screen](https://raw.githubusercontent.com/uladzemer/Homie/master/docs/screenshots/en-home.jpg)
 
+### 0.4.0
+- Safer boot screen changes: verified backups, migration from older versions, firmware checks and logo rollback on failure.
+- Update downloads clean up cached APKs and handle cancellation more reliably.
+- Faster return to Home with cached apps; Home also closes open menus.
+- Long OK works by timer, including remotes without key repeats.
+- Autostart retries while apps become available after boot, and stops when you leave Home.
+- README privacy information corrected.
+
+### Что нового в 0.4.0
+- Безопасная смена заставки: проверка резервных копий, перенос старых копий, привязка к прошивке и откат logo при ошибке.
+- Исправлены очистка APK обновления и отмена установки.
+- Быстрее возврат «Домой» благодаря кэшу приложений; кнопка «Домой» закрывает меню.
+- Долгое ОК по таймеру работает и на пультах без повторов нажатия.
+- Автозапуск повторяет попытки после загрузки и прекращает их при уходе с главного экрана.
+- Уточнена информация о приватности в README.
+
 ### Install
 1. Download the APK below and install it on your Android TV box (Android 8.0+), e.g. `adb install homie-*.apk`.
 2. Press Home on the remote and choose **Homie**.

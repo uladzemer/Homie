@@ -45,6 +45,7 @@ import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
     private var showSettings by mutableStateOf(false)
     private var update by mutableStateOf<Updater.Release?>(null)
     private var updateStatus by mutableStateOf<UpdateStatus>(UpdateStatus.Idle)
+    private var autostartJob: Job? = null
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -82,7 +84,11 @@ class MainActivity : ComponentActivity() {
             addDataScheme("package")
         })
 
-        registerReceiver(packageReceiver, IntentFilter(Intent.ACTION_LOCALE_CHANGED))
+        registerReceiver(packageReceiver, IntentFilter().apply {
+            addAction(Intent.ACTION_LOCALE_CHANGED)
+            addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE)
+            addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_UNAVAILABLE)
+        })
 
         setContent {
             ScreenDensity {
@@ -121,6 +127,16 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (InstalledApps.invalidated) reloadTick++
+    }
+
+    override fun onPause() {
+        autostartJob?.cancel()
+        super.onPause()
+    }
+
+    override fun onStop() {
+        autostartJob?.cancel()
+        super.onStop()
     }
 
     @Composable
@@ -242,8 +258,10 @@ class MainActivity : ComponentActivity() {
         val boot = if (bootCount >= 0) "count:$bootCount"
         else "time:${(System.currentTimeMillis() - SystemClock.elapsedRealtime()) / 600_000L}"
         if (store.autostartBoot == boot) return
-        lifecycleScope.launch {
+        autostartJob = lifecycleScope.launch {
             repeat(5) { attempt ->
+                // Настройку могли выключить или сменить, пока ждали следующую попытку.
+                if (store.load()?.autostart != pkg) return@launch
                 val started = runCatching {
                     val intent = InstalledApps.launchIntent(this@MainActivity, pkg) ?: return@runCatching false
                     startActivity(intent)

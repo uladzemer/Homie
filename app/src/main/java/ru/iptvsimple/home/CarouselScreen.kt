@@ -106,7 +106,10 @@ fun CarouselScreen(
     val carouselRequester = remember { FocusRequester() }
     val settingsRequester = remember { FocusRequester() }
 
-    val shelfIndex = shelves.indexOfFirst { it.rowId == selectedRow }.coerceAtLeast(0)
+    val visibleRows = shelves.map { it.rowId }
+    val visibleRow = visibleCarouselRow(selectedRow, visibleRows)
+    LaunchedEffect(visibleRows, selectedRow) { selectedRow = visibleRow }
+    val shelfIndex = shelves.indexOfFirst { it.rowId == visibleRow }.coerceAtLeast(0)
     fun selectShelf(i: Int) { selectedRow = shelves.getOrNull(i)?.rowId }
     val shelf = shelves.getOrNull(shelfIndex)
     val index = shelf?.apps?.indexOfFirst { it.pkg == selected[shelf.rowId] }?.takeIf { it >= 0 } ?: 0

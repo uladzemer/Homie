@@ -42,14 +42,19 @@ object InstalledApps {
     fun load(context: Context): Map<String, InstalledApp> {
         if (!observing) {
             // Приёмник живёт вместе с кэшем, даже если Activity была уничтожена.
-            context.applicationContext.registerReceiver(object : BroadcastReceiver() {
+            val receiver = object : BroadcastReceiver() {
                 override fun onReceive(context: Context, intent: Intent) { invalidate() }
-            }, IntentFilter().apply {
+            }
+            context.applicationContext.registerReceiver(receiver, IntentFilter().apply {
                 addAction(Intent.ACTION_PACKAGE_ADDED)
                 addAction(Intent.ACTION_PACKAGE_REMOVED)
                 addAction(Intent.ACTION_PACKAGE_CHANGED)
                 addAction(Intent.ACTION_PACKAGE_REPLACED)
                 addDataScheme("package")
+            })
+            context.applicationContext.registerReceiver(receiver, IntentFilter().apply {
+                addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE)
+                addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_UNAVAILABLE)
             })
             observing = true
         }
