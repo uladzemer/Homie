@@ -116,7 +116,7 @@
     <string name="boot_no_image">Картинки нет. Положите PNG в %1$s и попробуйте снова.</string>
     <string name="boot_failed">Не получилось: %1$s</string>
     <string name="boot_timeout">Истекло время ожидания команды root. Попробуйте снова.</string>
-    <string name="boot_backup_invalid">Копия раздела logo неполная или повреждена (размер/SHA-256) либо размер раздела нельзя проверить. Восстановление из неё запрещено.</string>
+    <string name="boot_backup_invalid">Копия раздела logo неполная или повреждена (заголовок/размер/SHA-256). Восстановление из неё запрещено.</string>
     <string name="boot_animation_backup_unknown">Нет исходной анимации или записи о её наличии. Восстановите анимацию прошивки вручную перед новой попыткой.</string>
     <string name="boot_command_failed">Ошибка команды root (код %1$s): %2$s</string>
     <string name="boot_partial">Часть файлов заставки могла измениться. Выбор не сохранён. %1$s</string>

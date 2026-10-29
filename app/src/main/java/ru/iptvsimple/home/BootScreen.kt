@@ -79,7 +79,7 @@ object BootScreen {
     /** Ставит заставку под общей для процесса блокировкой; вызывать вне главного потока. */
     suspend fun apply(context: Context, choice: BootLogo): Result = mutex.withLock {
         runCatching {
-            val root = Root.run("id", 10)
+            val root = Root.run("id", 60)
             if (root.timedOut) return@withLock failure(context, root)
             if (!root.success || !Regex("\\buid=0\\b").containsMatchIn(root.output)) return@withLock Result.NoRoot
             val result = if (choice == BootLogo.Stock) restore(context) else install(context, choice)
@@ -98,16 +98,18 @@ object BootScreen {
             val prep = Root.run(script("""
                 mkdir -p $BACKUP
                 chmod 700 $BACKUP
+                check_firmware
+                migrate_logo
+                migrate_animation
+                verify_backups
+                bind_firmware
                 if [ -e /dev/block/logo ] || [ -e $BACKUP/logo.img ]; then
                   if [ ! -e $BACKUP/logo.img ] && [ ! -e $BACKUP/logo.img.sha256 ]; then
                     partition_size
                     step dd if=/dev/block/logo of=$BACKUP/logo.img.tmp bs=4096
-                    [ "${'$'}(stat -c %s $BACKUP/logo.img.tmp)" = "${'$'}SIZE" ] || exit 65
-                    digest $BACKUP/logo.img.tmp > $BACKUP/logo.img.sha256.tmp
-                    step sync
-                    mv $BACKUP/logo.img.tmp $BACKUP/logo.img
-                    mv $BACKUP/logo.img.sha256.tmp $BACKUP/logo.img.sha256
-                    step sync
+                    [ "${'$'}(stat -c %s $BACKUP/logo.img.tmp)" = "${'$'}SIZE" ] || fail 65 'logo backup size mismatch'
+                    aml_header $BACKUP/logo.img.tmp || fail 65 'logo backup AML_RES header invalid'
+                    publish_file $BACKUP/logo.img
                   fi
                   verify_logo $BACKUP/logo.img
                   step cp $BACKUP/logo.img '$path/logo.src'
@@ -118,7 +120,6 @@ object BootScreen {
                   save_file $ODM_BOOTUP $BACKUP/odm_bootup.bmp
                 fi
                 if [ ! -f $BACKUP/animation.state ]; then
-                  [ ! -e $BACKUP/anim_path ] || exit 66
                   if grep -q ' /oem ' /proc/mounts; then P=/oem
                   elif grep -q ' /product ' /proc/mounts; then P=/product
                   else echo 'animation mount missing'; exit 1; fi
@@ -131,12 +132,12 @@ object BootScreen {
                   mv $BACKUP/animation.state.tmp $BACKUP/animation.state
                   step sync
                 fi
-                animation_state
+                verify_backups
                 if [ -f $CUSTOM_PATH ]; then
                   step cp $CUSTOM_PATH '$path/custom.png'
                   chmod 644 '$path/custom.png'
                 fi
-            """))
+            """), 120)
             if (!prep.success) return failure(context, prep)
 
             val art = when (choice) {
@@ -155,11 +156,16 @@ object BootScreen {
             logoNew?.let { File(dir, "logo.new").writeBytes(it) }
 
             val out = Root.run(script("""
+                check_firmware
+                [ -f $BACKUP/firmware ] || fail 68 'firmware binding missing'
+                verify_backups
                 animation_state
+                if [ -f $ODM_BOOTUP ]; then verify_file $BACKUP/odm_bootup.bmp; fi
                 ${if (logoNew != null) """
                 verify_logo $BACKUP/logo.img
                 partition_size
-                [ "${'$'}(stat -c %s '$path/logo.new')" = "${'$'}SIZE" ] || exit 65
+                [ "${'$'}(stat -c %s '$path/logo.new')" = "${'$'}SIZE" ] || fail 69 'new logo size mismatch'
+                ROLLBACK=1
                 echo writing:logo
                 step dd if='$path/logo.new' of=/dev/block/logo bs=4096
                 step sync
@@ -182,7 +188,7 @@ object BootScreen {
                 chmod 644 "${'$'}P/media/bootanimation.zip"
                 step sync
                 step cmp -s '$path/bootanimation.zip' "${'$'}P/media/bootanimation.zip"
-            """))
+            """), 120)
             if (!out.success) return failure(context, out)
             return if (logoNew != null || "written:odm" in out.output.lineSequence()) Result.Done else Result.DoneAnimationOnly
         } finally { dir.deleteRecursively() }
@@ -191,9 +197,11 @@ object BootScreen {
     private fun restore(context: Context): Result {
         val out = Root.run(script("""
             # Сначала проверяем все сохранённые данные, затем меняем разделы.
-            if [ -e $BACKUP/logo.img ] || [ -e $BACKUP/logo.img.sha256 ]; then verify_logo $BACKUP/logo.img; fi
-            if [ -e $BACKUP/animation.state ]; then animation_state
-            elif [ -e $BACKUP/anim_path ]; then exit 66; fi
+            check_firmware
+            migrate_logo
+            migrate_animation
+            verify_backups
+            if [ -e $BACKUP/logo.img ] || [ -e $BACKUP/odm_bootup.bmp ] || [ -e $BACKUP/animation.state ]; then bind_firmware; fi
             if [ -f $BACKUP/logo.img ]; then
               echo writing:logo
               step dd if=$BACKUP/logo.img of=/dev/block/logo bs=4096
@@ -219,25 +227,45 @@ object BootScreen {
               fi
               step sync
             fi
-        """))
+        """), 120)
         return if (out.success) Result.Done else failure(context, out)
     }
 
-    /** EXIT срабатывает и при ошибке; внутренний таймер оставляет время на remount,ro. */
-    private fun script(body: String): String = """
+    /** EXIT срабатывает и при ошибке; до внешних 120 с остаётся время на откат и remount,ro. */
+    internal fun script(body: String): String = """
         set -e
+        for TOOL in blockdev sha256sum stat cmp dd mount getprop cp mv rm mkdir chmod cat grep sync sleep; do
+          command -v "${'$'}TOOL" >/dev/null 2>&1 || { echo "tool ${'$'}TOOL missing"; exit 64; }
+        done
         RW=''
         WATCHDOG=''
         CHILD=''
+        ROLLBACK=0
         cleanup() {
           STATUS=${'$'}?
           trap - EXIT HUP INT TERM
           set +e
           if [ -n "${'$'}WATCHDOG" ]; then kill "${'$'}WATCHDOG" 2>/dev/null; fi
+          rollback_logo
           for TARGET in ${'$'}RW; do
             if ! mount -o remount,ro "${'$'}TARGET"; then echo "remount-ro:${'$'}TARGET"; STATUS=74; fi
           done
+          rollback_logo
           exit "${'$'}STATUS"
+        }
+        rollback_logo() {
+          if [ "${'$'}STATUS" -ne 0 ] && [ "${'$'}ROLLBACK" = 1 ]; then
+            ROLLBACK=0
+            # Подоболочка сохраняет отказ проверки: повреждённую копию не пишет даже cleanup.
+            if (
+              set -e
+              check_firmware
+              verify_logo $BACKUP/logo.img
+              dd if=$BACKUP/logo.img of=/dev/block/logo bs=4096 &&
+                sync && cmp -s $BACKUP/logo.img /dev/block/logo
+            ); then echo 'rolled back:logo'
+            else echo 'rollback failed:logo'; STATUS=76; fi
+          fi
         }
         trap cleanup EXIT
         stop() {
@@ -251,42 +279,107 @@ object BootScreen {
         trap 'stop 124' TERM
         trap 'stop 130' HUP INT
         MAIN=${'$'}${'$'}
-        (sleep 50; kill -TERM "${'$'}MAIN") >/dev/null 2>&1 &
+        (sleep 90; kill -TERM "${'$'}MAIN") >/dev/null 2>&1 &
         WATCHDOG=${'$'}!
         # wait прерывается сигналом сразу; зависший dd/cp не переживёт таймаут оболочки.
         step() { "${'$'}@" & CHILD=${'$'}!; wait "${'$'}CHILD"; CHILD=''; }
         rw() { RW="${'$'}1 ${'$'}RW"; step mount -o remount,rw "${'$'}1"; }
+        fail() { echo "${'$'}2" >&2; exit "${'$'}1"; }
         partition_size() {
-          SIZE=${'$'}(blockdev --getsize64 /dev/block/logo) || exit 65
-          case "${'$'}SIZE" in ''|*[!0-9]*) exit 65;; esac
-          [ "${'$'}SIZE" -gt 0 ] || exit 65
+          SIZE=${'$'}(blockdev --getsize64 /dev/block/logo) || fail 70 'logo partition size unavailable'
+          case "${'$'}SIZE" in ''|*[!0-9]*) fail 70 'logo partition size invalid';; esac
+          [ "${'$'}SIZE" -gt 0 ] || fail 70 'logo partition size invalid'
         }
         digest() {
-          HASH=${'$'}(sha256sum "${'$'}1") || exit 65
+          HASH=${'$'}(sha256sum "${'$'}1") || fail 71 'backup checksum failed'
           echo "${'$'}{HASH%% *}"
+        }
+        aml_header() {
+          MAGIC=${'$'}(dd if="${'$'}1" bs=1 skip=8 count=8 2>/dev/null) || return 1
+          [ "${'$'}MAGIC" = 'AML_RES!' ]
+        }
+        check_firmware() {
+          FIRMWARE=${'$'}(getprop ro.build.fingerprint) || fail 68 'firmware fingerprint unavailable'
+          [ -n "${'$'}FIRMWARE" ] || fail 68 'firmware fingerprint unavailable'
+          if [ -e $BACKUP/firmware ]; then
+            [ "${'$'}(cat $BACKUP/firmware)" = "${'$'}FIRMWARE" ] || fail 68 'firmware changed, backups are from previous firmware'
+          fi
+        }
+        bind_firmware() {
+          if [ ! -e $BACKUP/firmware ]; then
+            printf '%s\n' "${'$'}FIRMWARE" > $BACKUP/firmware.tmp
+            step sync
+            mv $BACKUP/firmware.tmp $BACKUP/firmware
+            step sync
+          fi
+        }
+        migrate_logo() {
+          if [ -e $BACKUP/logo.img ] && [ ! -e $BACKUP/logo.img.sha256 ]; then
+            [ ! -e $BACKUP/firmware ] || fail 65 'logo backup checksum missing'
+            partition_size
+            [ "${'$'}(stat -c %s $BACKUP/logo.img)" = "${'$'}SIZE" ] && aml_header $BACKUP/logo.img ||
+              fail 67 'old logo backup cannot be trusted: size or AML_RES header invalid'
+            digest $BACKUP/logo.img > $BACKUP/logo.img.sha256.tmp
+            step sync
+            mv $BACKUP/logo.img.sha256.tmp $BACKUP/logo.img.sha256
+            step sync
+          fi
         }
         verify_logo() {
           partition_size
-          [ -f "${'$'}1" ] && [ -f $BACKUP/logo.img.sha256 ] || exit 65
-          [ "${'$'}(stat -c %s "${'$'}1")" = "${'$'}SIZE" ] || exit 65
+          [ -f "${'$'}1" ] && [ -f $BACKUP/logo.img.sha256 ] || fail 65 'logo backup or checksum missing'
+          [ "${'$'}(stat -c %s "${'$'}1")" = "${'$'}SIZE" ] || fail 65 'logo backup size mismatch'
           EXPECTED=${'$'}(cat $BACKUP/logo.img.sha256)
-          [ -n "${'$'}EXPECTED" ] && [ "${'$'}(digest "${'$'}1")" = "${'$'}EXPECTED" ] || exit 65
+          valid_hash && [ "${'$'}(digest "${'$'}1")" = "${'$'}EXPECTED" ] || fail 65 'logo backup checksum mismatch'
+        }
+        publish_file() {
+          digest "${'$'}1.tmp" > "${'$'}1.sha256.tmp"
+          step sync
+          # Хеш публикуется первым: финальное имя без хеша бывает только у старых версий.
+          mv "${'$'}1.sha256.tmp" "${'$'}1.sha256"
+          step sync
+          mv "${'$'}1.tmp" "${'$'}1"
+          step sync
         }
         save_file() {
           step cp -p "${'$'}1" "${'$'}2.tmp"
           step cmp -s "${'$'}1" "${'$'}2.tmp"
-          step sync
-          mv "${'$'}2.tmp" "${'$'}2"
+          publish_file "${'$'}2"
+        }
+        verify_file() {
+          [ -f "${'$'}1" ] && [ -f "${'$'}1.sha256" ] || fail 72 "backup or checksum missing: ${'$'}1"
+          EXPECTED=${'$'}(cat "${'$'}1.sha256")
+          valid_hash && [ "${'$'}(digest "${'$'}1")" = "${'$'}EXPECTED" ] || fail 72 "backup checksum mismatch: ${'$'}1"
+        }
+        valid_hash() {
+          [ "${'$'}{#EXPECTED}" = 64 ] || return 1
+          case "${'$'}EXPECTED" in *[!0-9a-f]*) return 1;; esac
+        }
+        migrate_animation() {
+          if [ ! -e $BACKUP/animation.state ] && [ -e $BACKUP/anim_path ]; then
+            P=${'$'}(cat $BACKUP/anim_path)
+            case "${'$'}P" in /oem|/product) ;; *) fail 73 'old animation path invalid';; esac
+            # Старый restore удалял анимацию, даже если до установки она существовала.
+            echo "${'$'}P absent" > $BACKUP/animation.state.tmp
+            mv $BACKUP/animation.state.tmp $BACKUP/animation.state
+            step sync
+          fi
+        }
+        verify_backups() {
+          if [ -e $BACKUP/logo.img ] || [ -e $BACKUP/logo.img.sha256 ]; then verify_logo $BACKUP/logo.img; fi
+          if [ -e $BACKUP/odm_bootup.bmp ] || [ -e $BACKUP/odm_bootup.bmp.sha256 ]; then verify_file $BACKUP/odm_bootup.bmp; fi
+          if [ -e $BACKUP/bootanimation.zip ] || [ -e $BACKUP/bootanimation.zip.sha256 ]; then verify_file $BACKUP/bootanimation.zip; fi
+          if [ -e $BACKUP/animation.state ]; then animation_state; fi
         }
         animation_state() {
-          [ -f $BACKUP/animation.state ] || exit 66
-          read P ORIGINAL EXTRA < $BACKUP/animation.state || exit 66
-          case "${'$'}P" in /oem|/product) ;; *) exit 66;; esac
-          [ -z "${'$'}EXTRA" ] || exit 66
+          [ -f $BACKUP/animation.state ] || fail 66 'animation state missing'
+          read P ORIGINAL EXTRA < $BACKUP/animation.state || fail 66 'animation state unreadable'
+          case "${'$'}P" in /oem|/product) ;; *) fail 66 'animation state path invalid';; esac
+          [ -z "${'$'}EXTRA" ] || fail 66 'animation state invalid'
           case "${'$'}ORIGINAL" in
-            present) [ -f $BACKUP/bootanimation.zip ] || exit 66;;
+            present) verify_file $BACKUP/bootanimation.zip;;
             absent) ;;
-            *) exit 66;;
+            *) fail 66 'animation state invalid';;
           esac
         }
         ${body.trimIndent()}
@@ -299,9 +392,11 @@ object BootScreen {
             out.exitCode == 66 -> context.getString(R.string.boot_animation_backup_unknown)
             else -> context.getString(R.string.boot_command_failed, out.exitCode?.toString() ?: "?", out.output.trim().takeLast(200))
         }
+        val rollback = out.output.lineSequence().lastOrNull { it == "rolled back:logo" || it == "rollback failed:logo" }
+        val detail = if (rollback != null) "$message ($rollback)" else message
         return Result.Failed(if (out.output.lineSequence().any { it.startsWith("writing:") }) {
-            context.getString(R.string.boot_partial, message)
-        } else message)
+            context.getString(R.string.boot_partial, detail)
+        } else detail)
     }
 
     /** Сначала читаем размеры PNG: даже огромный исходник не должен исчерпать память. */
@@ -497,7 +592,7 @@ object Root {
         val success: Boolean get() = exitCode == 0 && !timedOut && !inputFailed
     }
 
-    fun available(): Boolean = run("id", 10).let { it.success && Regex("\\buid=0\\b").containsMatchIn(it.output) }
+    fun available(): Boolean = run("id", 60).let { it.success && Regex("\\buid=0\\b").containsMatchIn(it.output) }
 
     fun run(script: String, timeoutSeconds: Long = 60): Output {
         require(timeoutSeconds > 0)
