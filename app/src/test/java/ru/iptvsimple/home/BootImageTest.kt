@@ -1,11 +1,29 @@
 package ru.iptvsimple.home
 
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class BootImageTest {
+    @Test fun bmpHeaderRequiresMagicAndExactUnsignedLittleEndianFileSize() {
+        val bmp = ByteArray(258).also {
+            it[0] = 'B'.code.toByte(); it[1] = 'M'.code.toByte()
+            ByteBuffer.wrap(it).order(ByteOrder.LITTLE_ENDIAN).putInt(2, it.size)
+        }
+        assertTrue(BootImage.validBmpHeader(bmp))
+        for (size in listOf(0, 2, 5, 13, 257)) assertFalse(BootImage.validBmpHeader(bmp.copyOf(size)))
+        assertFalse(BootImage.validBmpHeader(bmp + byteArrayOf(0)))
+        assertFalse(BootImage.validBmpHeader(bmp.copyOf().also { it[0] = 0 }))
+        for (size in listOf(0, 257, 259, Int.MIN_VALUE, -1, 0x02010000)) {
+            val wrong = bmp.copyOf().also { ByteBuffer.wrap(it).order(ByteOrder.LITTLE_ENDIAN).putInt(2, size) }
+            assertFalse(BootImage.validBmpHeader(wrong), "declared=$size")
+        }
+    }
+
     @Test fun keepsSmallImagesAndSamplesAtPowerOfTwoBoundaries() {
         assertEquals(1, BootImage.sampleSize(1, 1))
         assertEquals(1, BootImage.sampleSize(840, 440))

@@ -103,9 +103,12 @@ object BootScreen {
     """)
 
     /** Единственный оставшийся путь записи logo — возврат проверенной старой копии. */
-    internal fun restoreLegacy(dir: File, run: (String) -> Root.Output = { Root.run(it, 120) }): Root.Output {
+    internal fun restoreLegacy(dir: File, bmpBounds: (File) -> Boolean = ::bmpBoundsValid,
+        run: (String) -> Root.Output = { Root.run(it, 120) }): Root.Output {
         val logo = File(dir, "logo.old")
         val path = logo.invariantSeparatorsPath
+        val odm = File(dir, "odm.old")
+        val odmPath = odm.invariantSeparatorsPath
         val staged = run(script("""
             if [ -e $BACKUP/logo.img ]; then
               if command -v blockdev >/dev/null && command -v stat >/dev/null &&
@@ -114,9 +117,19 @@ object BootScreen {
                 step cp $BACKUP/logo.img '$path' && chmod 644 '$path'; then :
               else rm -f '$path'; echo skipped:logo; fi
             fi
+            if [ -e $BACKUP/odm_bootup.bmp ]; then
+              if step cp $BACKUP/odm_bootup.bmp '$odmPath' && chmod 644 '$odmPath' && (
+                if [ -e $BACKUP/odm_bootup.bmp.sha256 ]; then
+                  EXPECTED=${'$'}(cat $BACKUP/odm_bootup.bmp.sha256) && HASH=${'$'}(sha256sum '$odmPath') &&
+                    [ "${'$'}{#EXPECTED}" = 64 ] && [ "${'$'}{HASH%% *}" = "${'$'}EXPECTED" ]
+                fi
+              ); then :
+              else rm -f '$odmPath'; echo skipped:odm; fi
+            fi
         """))
         if (!staged.success) return staged
         val valid = logo.exists() && AmlRes.isValid(logo.readBytes())
+        val validOdm = odm.exists() && runCatching { BootImage.validBmpHeader(odm.readBytes()) && bmpBounds(odm) }.getOrDefault(false)
         val restored = run(script("""
             ${if (valid) """
             if command -v dd >/dev/null && SIZE=${'$'}(blockdev --getsize64 /dev/block/logo) &&
@@ -127,16 +140,21 @@ object BootScreen {
               step rm -f $BACKUP/logo.img $BACKUP/logo.img.sha256
             else echo skipped:logo; fi
             """ else ""}
-            if [ -e $BACKUP/odm_bootup.bmp ]; then
-              if command -v dd >/dev/null && MAGIC=${'$'}(dd if=$BACKUP/odm_bootup.bmp bs=1 count=2 2>/dev/null) && [ "${'$'}MAGIC" = BM ]; then
-                rw /mnt/vendor/odm_ext
-                replace_file $BACKUP/odm_bootup.bmp $ODM_BOOTUP
-                step rm -f $BACKUP/odm_bootup.bmp $BACKUP/odm_bootup.bmp.sha256
-              else echo skipped:odm; fi
-            fi
+            ${if (validOdm) """
+            rw /mnt/vendor/odm_ext
+            replace_file '$odmPath' $ODM_BOOTUP
+            step rm -f $BACKUP/odm_bootup.bmp $BACKUP/odm_bootup.bmp.sha256
+            """ else ""}
         """))
-        val skipped = if (logo.exists() && !valid) "\nskipped:logo" else ""
+        val skipped = (if (logo.exists() && !valid) "\nskipped:logo" else "") +
+            (if (odm.exists() && !validOdm) "\nskipped:odm" else "")
         return restored.copy(output = staged.output + skipped + "\n" + restored.output)
+    }
+
+    private fun bmpBoundsValid(file: File): Boolean {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, options)
+        return options.outWidth > 0 && options.outHeight > 0
     }
 
     /** Один таймер: 75 с на работу, до внешних 120 с остаётся время на remount,ro. */
@@ -193,9 +211,10 @@ object BootScreen {
               if grep -q ' /oem ' /proc/mounts; then P=/oem
               elif grep -q ' /product ' /proc/mounts; then P=/product
               else fail 66 'animation mount missing'; fi
+              # Без state первая копия не завершена; media ещё не меняли, сохраняем её заново.
+              step rm -f $BACKUP/bootanimation.zip $BACKUP/bootanimation.zip.tmp $BACKUP/bootanimation.zip.sha256 $BACKUP/bootanimation.zip.sha256.tmp
               ORIGINAL=absent
-              if [ -e $BACKUP/bootanimation.zip ] || [ -e $BACKUP/bootanimation.zip.sha256 ]; then verify_animation; ORIGINAL=present
-              elif [ -e "${'$'}P/media/bootanimation.zip" ]; then
+              if [ -e "${'$'}P/media/bootanimation.zip" ]; then
                 step mkdir -p $BACKUP
                 step chmod 700 $BACKUP
                 step cp "${'$'}P/media/bootanimation.zip" $BACKUP/bootanimation.zip.tmp
@@ -323,6 +342,13 @@ object BootScreen {
 
 /** Размер декодирования — не больше удвоенного рисунка 420 × 220, с сохранением пропорций. */
 internal object BootImage {
+    /** Размер BMP в заголовке — беззнаковый uint32, little-endian. Декодирование проверяется отдельно. */
+    fun validBmpHeader(data: ByteArray): Boolean {
+        if (data.size < 14 || data[0] != 'B'.code.toByte() || data[1] != 'M'.code.toByte()) return false
+        val size = (2..5).fold(0L) { value, i -> value or ((data[i].toLong() and 0xff) shl ((i - 2) * 8)) }
+        return size == data.size.toLong()
+    }
+
     fun sampleSize(width: Int, height: Int): Int? {
         if (width !in 1..32768 || height !in 1..32768 || width.toLong() * height > 100_000_000) return null
         var sample = 1

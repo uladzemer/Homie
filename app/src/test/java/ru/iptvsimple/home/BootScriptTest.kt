@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
+import java.security.MessageDigest
 import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -26,11 +27,11 @@ class BootScriptTest {
         fun run(body: String, before: String = "") = execute(BootScreen.script(body), before)
         fun install(before: String = "") = execute(BootScreen.animationScript("./new.zip"), before)
         fun restore(before: String = "") = execute(BootScreen.animationScript(null), before)
-        fun legacy(before: String = "", afterStage: () -> Unit = {}): Root.Output {
+        fun legacy(before: String = "", boundsValid: Boolean = true, afterStage: () -> Unit = {}): Root.Output {
             val stage = Files.createTempDirectory(dir.toPath(), "stage-").toFile()
             var phase = 0
             return try {
-                BootScreen.restoreLegacy(stage) {
+                BootScreen.restoreLegacy(stage, bmpBounds = { boundsValid }) {
                     if (phase++ == 1) afterStage()
                     execute(it, before)
                 }
@@ -58,6 +59,13 @@ class BootScriptTest {
     }
 
     companion object {
+        private fun bmp() = ByteArray(58).also {
+            val b = ByteBuffer.wrap(it).order(ByteOrder.LITTLE_ENDIAN)
+            it[0] = 'B'.code.toByte(); it[1] = 'M'.code.toByte()
+            b.putInt(2, it.size); b.putInt(10, 54); b.putInt(14, 40)
+            b.putInt(18, 1); b.putInt(22, 1); b.putShort(26, 1); b.putShort(28, 24); b.putInt(34, 4)
+        }
+
         private fun image() = ByteArray(1024).also {
             val b = ByteBuffer.wrap(it).order(ByteOrder.LITTLE_ENDIAN)
             "AML_RES!".toByteArray().copyInto(it, 8)
@@ -160,14 +168,27 @@ class BootScriptTest {
         }
     }
 
-    @Test fun incompleteBackupPublicationNeverLosesTheOriginal() = Fixture().use { f ->
+    @Test fun interruptedBackupWithPublishedHashIsRetriedFromOriginal() = Fixture().use { f ->
         f.animation().writeText("original")
         val out = f.install("mv() { case \"${'$'}1\" in */bootanimation.zip.tmp) return 9;; esac; command mv \"${'$'}@\"; }")
         assertEquals(9, out.exitCode, out.output)
         assertTrue(f.file("bootanimation.zip.sha256").exists())
+        assertFalse(f.file("bootanimation.zip").exists())
         assertFalse(f.file("animation.state").exists())
         assertEquals("original", f.animation().readText())
-        assertEquals(72, f.install().exitCode)
+        val retried = f.install()
+        assertTrue(retried.success, retried.output)
+        assertEquals("original", f.file("bootanimation.zip").readText())
+        assertTrue(f.run("verify_animation").success)
+        assertEquals("./oem present\n", f.file("animation.state").readText())
+    }
+
+    @Test fun interruptedBackupWithNoOriginalIsDiscardedAndRecordedAbsent() = Fixture().use { f ->
+        val leftovers = listOf("bootanimation.zip", "bootanimation.zip.tmp", "bootanimation.zip.sha256", "bootanimation.zip.sha256.tmp")
+        leftovers.forEach { f.file(it).writeText("interrupted") }
+        assertTrue(f.install().success)
+        assertEquals("./oem absent\n", f.file("animation.state").readText())
+        leftovers.forEach { assertFalse(f.file(it).exists(), it) }
     }
 
     @Test fun failedAtomicReplaceKeepsTargetAndAlwaysRemountsReadOnly() = Fixture().use { f ->
@@ -192,11 +213,11 @@ class BootScriptTest {
 
     @Test fun verifiedOldLogoAndBmpRestoreOnceAndDeleteBackups() = Fixture().use { f ->
         f.file("logo.img").writeBytes(image())
-        f.file("odm_bootup.bmp").writeText("BMoriginal")
+        f.file("odm_bootup.bmp").writeBytes(bmp())
         val out = f.legacy()
         assertTrue(out.success, out.output)
         assertContentEquals(image(), f.partition.readBytes())
-        assertEquals("BMoriginal", f.odm.readText())
+        assertContentEquals(bmp(), f.odm.readBytes())
         assertFalse(f.file("logo.img").exists())
         assertFalse(f.file("odm_bootup.bmp").exists())
         f.partition.writeText("changed later")
@@ -211,13 +232,13 @@ class BootScriptTest {
         })) Fixture().use { f ->
             val original = f.partition.readBytes()
             f.file("logo.img").writeBytes(bytes)
-            f.file("odm_bootup.bmp").writeText("BMoriginal")
+            f.file("odm_bootup.bmp").writeBytes(bmp())
             val out = f.legacy()
             assertTrue(out.success, out.output)
             assertTrue("skipped:logo" in out.output)
             assertContentEquals(original, f.partition.readBytes())
             assertTrue(f.file("logo.img").exists())
-            assertEquals("BMoriginal", f.odm.readText())
+            assertContentEquals(bmp(), f.odm.readBytes())
         }
     }
 
@@ -242,5 +263,51 @@ class BootScriptTest {
         f.file("logo.img").writeBytes(image())
         assertEquals(9, f.legacy("dd() { return 9; }").exitCode)
         assertTrue(f.file("logo.img").exists())
+    }
+
+    @Test fun truncatedBmpAndUndecodableBoundsAreSkipped() {
+        for (bytes in listOf(byteArrayOf(), "BM".toByteArray(), bmp().copyOf(40))) Fixture().use { f ->
+            f.file("odm_bootup.bmp").writeBytes(bytes)
+            val out = f.legacy()
+            assertTrue(out.success, out.output)
+            assertTrue("skipped:odm" in out.output)
+            assertEquals("BMcurrent", f.odm.readText())
+            assertTrue(f.file("odm_bootup.bmp").exists())
+            assertTrue(f.mounts().isEmpty())
+        }
+        Fixture().use { f ->
+            f.file("odm_bootup.bmp").writeBytes(bmp())
+            val out = f.legacy(boundsValid = false)
+            assertTrue(out.success, out.output)
+            assertTrue("skipped:odm" in out.output)
+            assertEquals("BMcurrent", f.odm.readText())
+            assertTrue(f.file("odm_bootup.bmp").exists())
+        }
+    }
+
+    @Test fun odmSidecarMustMatchTheStagedBmpWhenPresent() {
+        for (matches in listOf(true, false)) Fixture().use { f ->
+            f.file("odm_bootup.bmp").writeBytes(bmp())
+            val hash = MessageDigest.getInstance("SHA-256").digest(bmp()).joinToString("") { "%02x".format(it) }
+            f.file("odm_bootup.bmp.sha256").writeText(if (matches) "$hash\n" else "0".repeat(64))
+            val out = f.legacy()
+            assertTrue(out.success, out.output)
+            if (matches) {
+                assertContentEquals(bmp(), f.odm.readBytes())
+                assertFalse(f.file("odm_bootup.bmp.sha256").exists())
+            } else {
+                assertTrue("skipped:odm" in out.output)
+                assertEquals("BMcurrent", f.odm.readText())
+                assertTrue(f.file("odm_bootup.bmp").exists())
+            }
+        }
+    }
+
+    @Test fun odmRestoreUsesValidatedStaging() = Fixture().use { f ->
+        f.file("odm_bootup.bmp").writeBytes(bmp())
+        val out = f.legacy { f.file("odm_bootup.bmp").writeText("BMdamaged later") }
+        assertTrue(out.success, out.output)
+        assertContentEquals(bmp(), f.odm.readBytes())
+        assertFalse(f.file("odm_bootup.bmp").exists())
     }
 }
