@@ -5,15 +5,13 @@ package ru.iptvsimple.home
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.stringArrayResource
 import android.view.KeyEvent as AndroidKeyEvent
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,42 +19,51 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private val VerticalPivot = PivotScroll(0.06f)
@@ -90,28 +97,80 @@ fun HomeScreen(
     var menuFor by remember { mutableStateOf<String?>(null) }
     var pendingFocus by remember { mutableStateOf<String?>(null) }
 
-    val rows = config.rows
-    val others = apps.values
-        .filter { it.pkg !in config.placed && it.pkg !in config.hidden }
-        .sortedBy { it.label.lowercase() }
-    val firstTile = rows.firstNotNullOfOrNull { row -> row.apps.firstOrNull { it in apps } }
-        ?: others.takeIf { config.showOthers }?.firstOrNull()?.pkg
+    val othersTitle = stringResource(if (config.rows.isEmpty()) R.string.all_apps else R.string.other_apps)
+    val lines = remember(config.rows, config.hidden, config.showOthers, config.tileSize, apps, othersTitle) {
+        homeLines(config, apps, othersTitle)
+    }
+
+    val positions = remember(lines) {
+        buildMap { lines.forEachIndexed { r, line -> line.apps.forEachIndexed { i, app -> put(app.pkg, r to i) } } }
+    }
+    val firstTile = lines.firstOrNull { it.apps.isNotEmpty() }?.apps?.firstOrNull()?.pkg
+    val scroll = rememberLazyListState()
+    val rowScrolls = remember { HashMap<String, LazyListState>() }
+    fun rowScroll(id: String) = rowScrolls.getOrPut(id) { LazyListState() }
+    // Аналог focusRestorer без удержания удалённой плитки: память ряда переживает его выгрузку.
+    val lastFocused = remember { HashMap<String, String>() }
+    var focusedPackage by remember { mutableStateOf<String?>(null) }
+    var headerFocused by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val tileStride = with(LocalDensity.current) { (config.tileSize.width + 20f).dp.toPx() }
+    var focusJob by remember { mutableStateOf<Job?>(null) }
+    LaunchedEffect(lines, apps) {
+        val ids = lines.mapTo(HashSet()) { it.id }
+        rowScrolls.keys.retainAll(ids)
+        lastFocused.keys.retainAll(ids)
+        requesters.keys.retainAll(apps.keys)
+    }
+
+    suspend fun focusTile(pkg: String) {
+        val (r, i) = positions[pkg] ?: return
+        // Сначала создаём строку и плитку, затем подключённый FocusRequester получает фокус.
+        if (scroll.layoutInfo.visibleItemsInfo.none { it.index == r }) scroll.scrollToItem(r)
+        val horizontal = rowScroll(lines[r].id)
+        if (horizontal.layoutInfo.visibleItemsInfo.none { it.index == i }) horizontal.scrollToItem(i)
+        withFrameNanos { }
+        runCatching { requester(pkg).requestFocus() }
+    }
+
+    fun focusLine(r: Int, source: Pair<Int, Int>?) {
+        val line = lines[r]
+        val x = source?.let { (row, tile) -> rowScroll(lines[row].id).layoutInfo.visibleItemsInfo.firstOrNull { it.index == tile }?.offset } ?: 0
+        // При первом входе — ближайшая по экрану плитка, при возврате — сохранённый пакет.
+        val column = rowScroll(line.id).layoutInfo.visibleItemsInfo.minByOrNull { abs(it.offset - x) }?.index
+            ?: (x / tileStride).roundToInt().coerceAtLeast(0)
+        val pkg = line.focusPackage(lastFocused[line.id], column) ?: return
+        focusJob?.cancel()
+        focusJob = scope.launch { focusTile(pkg) }
+    }
 
     // Фокус на первую плитку при запуске и по кнопке «Домой».
     LaunchedEffect(focusHome, appsLoaded, firstTile == null) {
         moving = null
         menuFor = null
         pendingFocus = null
+        focusJob?.cancel()
         if (!appsLoaded) return@LaunchedEffect
-        withFrameNanos { }
-        runCatching { (firstTile?.let(::requester) ?: settingsRequester).requestFocus() }
+        focusJob = launch {
+            if (firstTile != null) focusTile(firstTile) else {
+                withFrameNanos { }
+                runCatching { settingsRequester.requestFocus() }
+            }
+        }
     }
     // После перестановки фокус следует за плиткой.
-    LaunchedEffect(pendingFocus, config) {
+    LaunchedEffect(pendingFocus, lines, menuFor) {
         val pkg = pendingFocus ?: return@LaunchedEffect
-        withFrameNanos { }
-        runCatching { requester(pkg).requestFocus() }
-        pendingFocus = null
+        if (menuFor != null) return@LaunchedEffect
+        focusJob?.cancel()
+        focusJob = launch {
+            val target = pkg.takeIf { it in positions } ?: firstTile
+            if (target != null) focusTile(target) else {
+                withFrameNanos { }
+                runCatching { settingsRequester.requestFocus() }
+            }
+            pendingFocus = null
+        }
     }
 
     fun moveBy(pkg: String, dx: Int, dy: Int) {
@@ -119,13 +178,27 @@ fun HomeScreen(
         pendingFocus = pkg
     }
 
-    val scroll = rememberScrollState()
     Column(
         Modifier
             .fillMaxSize()
             .onPreviewKeyEvent { e ->
-                val m = moving ?: return@onPreviewKeyEvent false
                 val code = e.nativeKeyEvent.keyCode
+                val m = moving
+                if (m == null) {
+                    if (code != AndroidKeyEvent.KEYCODE_DPAD_UP && code != AndroidKeyEvent.KEYCODE_DPAD_DOWN) return@onPreviewKeyEvent false
+                    if (focusJob?.isActive == true) return@onPreviewKeyEvent true
+                    val position = focusedPackage?.let { positions[it] }
+                    // По вертикали восстанавливаем пакет даже в уже выгруженном ряду.
+                    val target = if (position != null) {
+                        val next = nextFocusLine(lines, position.first, code == AndroidKeyEvent.KEYCODE_DPAD_UP)
+                        if (next == null && code == AndroidKeyEvent.KEYCODE_DPAD_UP) return@onPreviewKeyEvent false
+                        next
+                    } else if (headerFocused && code == AndroidKeyEvent.KEYCODE_DPAD_DOWN) {
+                        lines.indexOfFirst { it.apps.isNotEmpty() }.takeIf { it >= 0 }
+                    } else return@onPreviewKeyEvent false
+                    if (target != null && e.type == KeyEventType.KeyDown) focusLine(target, position)
+                    return@onPreviewKeyEvent true
+                }
                 if (e.type == KeyEventType.KeyDown) {
                     when (code) {
                         AndroidKeyEvent.KEYCODE_DPAD_LEFT -> moveBy(m.pkg, -1, 0)
@@ -144,30 +217,29 @@ fun HomeScreen(
             }
             .padding(horizontal = 44.dp),
     ) {
-        Header(config, moving != null, settingsRequester, onOpenSettings, focusHome)
+        Box(Modifier.onFocusChanged { headerFocused = it.hasFocus }.focusGroup()) {
+            Header(config, moving != null, settingsRequester, onOpenSettings, focusHome)
+        }
         // Выбранный ряд встаёт почти к верху, а ряды прокручиваются под ним.
         CompositionLocalProvider(LocalBringIntoViewSpec provides VerticalPivot) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(scroll)
-                .padding(bottom = 40.dp),
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            state = scroll,
+            contentPadding = PaddingValues(bottom = 40.dp),
         ) {
-            rows.forEachIndexed { rowIndex, row ->
-                val shown = row.apps.mapNotNull { apps[it] }
-                val dock = rowIndex == 0
-                if (!dock) RowTitle(row.title)
-                if (shown.isEmpty()) {
-                    Text(
-                        stringResource(R.string.row_empty),
-                        color = Palette.InkMuted,
-                        fontSize = ts(12f),
-                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-                    )
-                } else {
-                    TileRow(dock = dock) {
-                        shown.forEach { app ->
-                            key(app.pkg) {
+            items(lines, key = { it.id }) { line ->
+                Column {
+                    line.title?.let { RowTitle(it) }
+                    if (line.apps.isEmpty()) {
+                        Text(
+                            stringResource(R.string.row_empty),
+                            color = Palette.InkMuted,
+                            fontSize = ts(12f),
+                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                        )
+                    } else {
+                        TileRow(state = rowScroll(line.id), scrollable = line.scrollable, dock = line.dock) {
+                            items(line.apps, key = { it.pkg }) { app ->
                                 AppTile(
                                     app = app,
                                     config = config,
@@ -175,29 +247,13 @@ fun HomeScreen(
                                     requester = requester(app.pkg),
                                     onClick = { onLaunch(app.pkg) },
                                     onMenu = { menuFor = app.pkg },
-                                    onFocused = { onDeepFocus(!dock) },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            if (config.showOthers && others.isNotEmpty()) {
-                RowTitle(stringResource(if (rows.isEmpty()) R.string.all_apps else R.string.other_apps))
-                // Сеткой: столько плиток в строке, сколько помещается по ширине.
-                val perLine = ((960f - 88f - 28f + 18f) / (config.tileSize.width + 18f)).toInt().coerceAtLeast(1)
-                others.chunked(perLine).forEach { line ->
-                    TileRow(scrollable = false) {
-                        line.forEach { app ->
-                            key(app.pkg) {
-                                AppTile(
-                                    app = app,
-                                    config = config,
-                                    moving = false,
-                                    requester = requester(app.pkg),
-                                    onClick = { onLaunch(app.pkg) },
-                                    onMenu = { menuFor = app.pkg },
-                                    onFocused = { onDeepFocus(true) },
+                                    onFocusChange = {
+                                        if (it) {
+                                            focusedPackage = app.pkg
+                                            lastFocused[line.id] = app.pkg
+                                            onDeepFocus(!line.dock)
+                                        } else if (focusedPackage == app.pkg) focusedPackage = null
+                                    },
                                 )
                             }
                         }
@@ -205,7 +261,9 @@ fun HomeScreen(
                 }
             }
             if (!appsLoaded) {
-                Text(stringResource(R.string.loading_apps), color = Palette.InkSoft, fontSize = ts(14f), modifier = Modifier.padding(top = 20.dp))
+                item(key = "loading") {
+                    Text(stringResource(R.string.loading_apps), color = Palette.InkSoft, fontSize = ts(14f), modifier = Modifier.padding(top = 20.dp))
+                }
             }
         }
         }
@@ -220,7 +278,10 @@ fun HomeScreen(
             onLaunch = onLaunch,
             onMove = { moving = Moving(it); pendingFocus = it },
             onFocus = { pendingFocus = it },
-            onDismiss = { menuFor = null },
+            onDismiss = {
+                menuFor = null
+                if (pendingFocus == null) pendingFocus = pkg.takeIf { it in positions } ?: firstTile
+            },
         )
     }
 }
@@ -283,10 +344,10 @@ private fun RowTitle(title: String) {
 }
 
 @Composable
-private fun TileRow(scrollable: Boolean = true, dock: Boolean = false, content: @Composable () -> Unit) {
+private fun TileRow(state: LazyListState, scrollable: Boolean, dock: Boolean, content: LazyListScope.() -> Unit) {
     // По ряду выбранная плитка держится у левого края, листается сам ряд.
     CompositionLocalProvider(LocalBringIntoViewSpec provides HorizontalPivot) {
-    Row(
+    LazyRow(
         // Отступы, чтобы увеличенная в фокусе плитка не обрезалась краем ряда.
         // Первый ряд — «док» на матовой подложке без рамки, как на Apple TV.
         modifier = Modifier
@@ -308,11 +369,14 @@ private fun TileRow(scrollable: Boolean = true, dock: Boolean = false, content: 
                         .padding(horizontal = 10.dp, vertical = 10.dp)
                 } else Modifier
             )
-            .then(if (scrollable) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
             // Запас по краям: плитка в фокусе крупнее на 12 % и с тенью.
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(vertical = 12.dp),
+        state = state,
+        userScrollEnabled = scrollable,
+        contentPadding = PaddingValues(horizontal = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
-    ) { content() }
+        content = content,
+    )
     }
 }
 
@@ -324,7 +388,7 @@ private fun AppTile(
     requester: FocusRequester,
     onClick: () -> Unit,
     onMenu: () -> Unit,
-    onFocused: () -> Unit = {},
+    onFocusChange: (Boolean) -> Unit,
 ) {
     val width = config.tileSize.width.dp
     val height = width * 9f / 16f
@@ -336,7 +400,7 @@ private fun AppTile(
         FocusBox(
             onClick = onClick,
             onLongClick = onMenu,
-            onFocusChange = { focused = it; if (it) onFocused() },
+            onFocusChange = { focused = it; onFocusChange(it) },
             onPressChange = { pressed = it },
             modifier = Modifier
                 .size(width, height)
