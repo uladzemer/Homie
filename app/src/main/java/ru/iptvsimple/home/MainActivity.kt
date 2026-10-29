@@ -12,7 +12,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,7 +30,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -40,6 +39,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.em
 import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.MaterialTheme
@@ -302,14 +302,7 @@ private fun BackdropLayer(config: HomeConfig, photos: List<String>, dim: Boolean
                     index = (index + 1) % photos.size
                 }
             }
-            val bitmap by produceState<ImageBitmap?>(null, index) {
-                value = withContext(Dispatchers.IO) { Wallpapers.load(context, photos[index]) }
-            }
-            Crossfade(bitmap, animationSpec = tween(1500), label = "wallpaper") { image ->
-                if (image != null) {
-                    Image(image, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                }
-            }
+            PhotoBackdrop(photos[index])
         }
     }
     // Затемнение: сверху и снизу сильнее (часы и плитки), при прокрутке вниз — всё темнее.
@@ -326,4 +319,34 @@ private fun BackdropLayer(config: HomeConfig, photos: List<String>, dim: Boolean
             ),
     )
     Box(Modifier.fillMaxSize().graphicsLayer { alpha = extra }.background(Color.Black.copy(alpha = 0.45f)))
+}
+
+/** При resume имя и размер не меняются: фото не декодируется заново. Старое живёт только до конца перехода. */
+@Composable
+private fun PhotoBackdrop(name: String) {
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val metrics = context.resources.displayMetrics
+    val width = metrics.widthPixels
+    val height = metrics.heightPixels
+    var current by remember { mutableStateOf<ImageBitmap?>(null) }
+    var previous by remember { mutableStateOf<ImageBitmap?>(null) }
+    val fade = remember { Animatable(1f) }
+    LaunchedEffect(name, width, height, configuration.orientation) {
+        fade.snapTo(1f)
+        val loaded = withContext(Dispatchers.IO) { Wallpapers.load(context, name, width, height) } ?: return@LaunchedEffect
+        previous = current
+        current = loaded
+        fade.snapTo(0f)
+        try {
+            fade.animateTo(1f, tween(1500))
+        } finally {
+            // В том числе при быстрой смене фото: не накапливаем промежуточные картинки.
+            previous = null
+        }
+    }
+    previous?.let { Image(it, null, Modifier.fillMaxSize().graphicsLayer { alpha = 1f - fade.value }, contentScale = ContentScale.Crop) }
+    current?.let {
+        Image(it, null, Modifier.fillMaxSize().graphicsLayer { alpha = fade.value }, contentScale = ContentScale.Crop)
+    }
 }

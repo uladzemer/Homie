@@ -134,9 +134,19 @@ object Wallpapers {
         context.assets.list(DIR).orEmpty().filter { it.endsWith(".jpg") }.sorted()
 
     /** Картинка в 16-битном цвете: вдвое меньше памяти, на фоне под затемнением разницы не видно. */
-    fun load(context: Context, name: String): ImageBitmap? = runCatching {
+    fun load(context: Context, name: String, width: Int = context.resources.displayMetrics.widthPixels, height: Int = context.resources.displayMetrics.heightPixels): ImageBitmap? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.assets.open("$DIR/$name").use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+        val size = wallpaperSize(bounds.outWidth, bounds.outHeight, width, height)
         context.assets.open("$DIR/$name").use { stream ->
-            val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 }
+            val options = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.RGB_565
+                inSampleSize = size.sample
+                inScaled = true
+                inDensity = size.density
+                inTargetDensity = size.targetDensity
+            }
             BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
         }
     }.getOrNull()
