@@ -17,6 +17,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
@@ -95,50 +98,64 @@ object Updater {
 
     /** Скачивает APK в кэш; [onProgress] — доля от 0 до 1. */
     suspend fun download(context: Context, release: Release, onProgress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
-        val file = File(context.cacheDir, "update.apk")
-        val conn = URL(release.apkUrl).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 30_000
-        try {
-            if (conn.responseCode != 200) error("HTTP ${conn.responseCode}")
-            val total = conn.contentLengthLong
-            conn.inputStream.use { input ->
-                file.outputStream().use { out ->
-                    val buf = ByteArray(64 * 1024)
-                    var done = 0L
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                        done += n
-                        if (total > 0) onProgress(done.toFloat() / total)
+        coroutineScope {
+            val conn = URL(release.apkUrl).openConnection() as HttpURLConnection
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 30_000
+            val file = File.createTempFile("update-", ".apk.part", context.cacheDir)
+            val completed = File(file.path.removeSuffix(".part"))
+            // Отмена разрывает соединение, даже если чтение ещё ждёт данные.
+            val disconnect = launch(start = CoroutineStart.UNDISPATCHED) {
+                try { awaitCancellation() } finally { conn.disconnect() }
+            }
+            try {
+                if (conn.responseCode != 200) error("HTTP ${conn.responseCode}")
+                val total = conn.contentLengthLong
+                conn.inputStream.use { input ->
+                    file.outputStream().use { out ->
+                        val buf = ByteArray(64 * 1024)
+                        var done = 0L
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val n = input.read(buf)
+                            coroutineContext.ensureActive()
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            done += n
+                            if (total > 0) onProgress(done.toFloat() / total)
+                        }
+                        check(total < 0 || done == total) { "incomplete APK" }
                     }
                 }
+                coroutineContext.ensureActive()
+                // Чужой или старый файл не ставим: проверяем пакет и номер версии.
+                val info = context.packageManager.getPackageArchiveInfo(file.path, 0)
+                val current = context.packageManager.getPackageInfo(context.packageName, 0)
+                @Suppress("DEPRECATION")
+                if (info?.packageName != context.packageName || info.versionCode <= current.versionCode) {
+                    error("bad APK")
+                }
+                coroutineContext.ensureActive()
+                check(file.renameTo(completed)) { "rename failed" }
+                completed
+            } finally {
+                disconnect.cancel()
+                conn.disconnect()
+                file.delete()
+                if (!coroutineContext[Job]!!.isActive) completed.delete()
             }
-        } finally {
-            conn.disconnect()
         }
-        // Чужой или старый файл не ставим: проверяем пакет и номер версии.
-        val info = context.packageManager.getPackageArchiveInfo(file.path, 0)
-        val current = context.packageManager.getPackageInfo(context.packageName, 0)
-        @Suppress("DEPRECATION")
-        if (info?.packageName != context.packageName || info.versionCode <= current.versionCode) {
-            file.delete()
-            error("bad APK")
-        }
-        file
     }
 
     /** Ставит скачанный APK. После удачной установки система сама перезапустит главный экран. */
     suspend fun install(context: Context, file: File) = withContext(Dispatchers.IO) {
         installError = null
         if (Root.available()) {
-            val tmp = "/data/local/tmp/homie-update.apk"
             val out = Root.run(
                 """
-                cp '${file.path}' $tmp && chmod 644 $tmp && pm install -r $tmp
-                rm -f $tmp
+                tmp=${'$'}(mktemp /data/local/tmp/homie-update.XXXXXXXX) || exit 1
+                trap 'rm -f "${'$'}tmp"' EXIT HUP INT TERM
+                cp '${file.path}' "${'$'}tmp" && chmod 644 "${'$'}tmp" && pm install -r "${'$'}tmp"
                 """,
             )
             if (out.contains("Success")) return@withContext
@@ -148,14 +165,29 @@ object Updater {
         params.setAppPackageName(context.packageName)
         if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
         val id = installer.createSession(params)
-        installer.openSession(id).use { session ->
-            session.openWrite("homie.apk", 0, file.length()).use { out ->
-                file.inputStream().use { it.copyTo(out) }
-                session.fsync(out)
+        try {
+            installer.openSession(id).use { session ->
+                session.openWrite("homie.apk", 0, file.length()).use { out ->
+                    file.inputStream().use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val n = input.read(buf)
+                            coroutineContext.ensureActive()
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                        }
+                    }
+                    session.fsync(out)
+                }
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                val callback = PendingIntent.getBroadcast(context, id, Intent(context, UpdateReceiver::class.java), flags)
+                coroutineContext.ensureActive()
+                session.commit(callback.intentSender)
             }
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
-            val callback = PendingIntent.getBroadcast(context, id, Intent(context, UpdateReceiver::class.java), flags)
-            session.commit(callback.intentSender)
+        } catch (e: Throwable) {
+            runCatching { installer.abandonSession(id) }
+            throw e
         }
     }
 

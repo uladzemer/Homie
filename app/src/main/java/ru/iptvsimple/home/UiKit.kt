@@ -32,6 +32,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Text
+import kotlinx.coroutines.delay
 import kotlin.math.min
 
 /** Цвета тёмной темы tvOS: нейтральные серые, без рамок; выбранное — белое. */
@@ -155,6 +157,16 @@ fun FocusBox(
     var pressed by remember { mutableStateOf(false) }
     LaunchedEffect(pressed) { onPressChange(pressed) }
     var longFired by remember { mutableStateOf(false) }
+    val currentLongClick by rememberUpdatedState(onLongClick)
+    LaunchedEffect(pressed, focused) {
+        if (pressed && focused) {
+            delay(android.view.ViewConfiguration.getLongPressTimeout().toLong())
+            if (pressed && !longFired && currentLongClick != null) {
+                longFired = true
+                currentLongClick?.invoke()
+            }
+        }
+    }
     Box(
         modifier = modifier
             .onFocusChanged {

@@ -76,6 +76,7 @@ fun HomeScreen(
     config: HomeConfig,
     apps: Map<String, InstalledApp>,
     focusHome: Int,
+    appsLoaded: Boolean,
     onConfig: (HomeConfig) -> Unit,
     onLaunch: (String) -> Unit,
     onOpenSettings: () -> Unit,
@@ -97,9 +98,11 @@ fun HomeScreen(
         ?: others.takeIf { config.showOthers }?.firstOrNull()?.pkg
 
     // Фокус на первую плитку при запуске и по кнопке «Домой».
-    LaunchedEffect(focusHome, apps.isNotEmpty()) {
-        if (apps.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(focusHome, appsLoaded, firstTile == null) {
         moving = null
+        menuFor = null
+        pendingFocus = null
+        if (!appsLoaded) return@LaunchedEffect
         withFrameNanos { }
         runCatching { (firstTile?.let(::requester) ?: settingsRequester).requestFocus() }
     }
@@ -141,7 +144,7 @@ fun HomeScreen(
             }
             .padding(horizontal = 44.dp),
     ) {
-        Header(config, moving != null, settingsRequester, onOpenSettings)
+        Header(config, moving != null, settingsRequester, onOpenSettings, focusHome)
         // Выбранный ряд встаёт почти к верху, а ряды прокручиваются под ним.
         CompositionLocalProvider(LocalBringIntoViewSpec provides VerticalPivot) {
         Column(
@@ -201,7 +204,7 @@ fun HomeScreen(
                     }
                 }
             }
-            if (apps.isEmpty()) {
+            if (!appsLoaded) {
                 Text(stringResource(R.string.loading_apps), color = Palette.InkSoft, fontSize = ts(14f), modifier = Modifier.padding(top = 20.dp))
             }
         }
@@ -223,7 +226,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun Header(config: HomeConfig, moving: Boolean, settingsRequester: FocusRequester, onOpenSettings: () -> Unit) {
+private fun Header(config: HomeConfig, moving: Boolean, settingsRequester: FocusRequester, onOpenSettings: () -> Unit, focusHome: Int) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -239,7 +242,7 @@ private fun Header(config: HomeConfig, moving: Boolean, settingsRequester: Focus
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-        StatusBar(settingsRequester, onOpenSettings, Modifier.align(Alignment.TopEnd))
+        StatusBar(settingsRequester, onOpenSettings, Modifier.align(Alignment.TopEnd), focusHome)
     }
 }
 

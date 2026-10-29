@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var store: ConfigStore
     private var config by mutableStateOf<HomeConfig?>(null)
     private var apps by mutableStateOf<Map<String, InstalledApp>>(emptyMap())
+    private var appsLoaded by mutableStateOf(false)
     private var reloadTick by mutableIntStateOf(0)
     private var homeTick by mutableIntStateOf(0)
     private var showSettings by mutableStateOf(false)
@@ -61,7 +62,10 @@ class MainActivity : ComponentActivity() {
     private var updateStatus by mutableStateOf<UpdateStatus>(UpdateStatus.Idle)
 
     private val packageReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) { reloadTick++ }
+        override fun onReceive(context: Context, intent: Intent) {
+            InstalledApps.invalidate()
+            reloadTick++
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,6 +81,8 @@ class MainActivity : ComponentActivity() {
             addAction(Intent.ACTION_PACKAGE_REPLACED)
             addDataScheme("package")
         })
+
+        registerReceiver(packageReceiver, IntentFilter(Intent.ACTION_LOCALE_CHANGED))
 
         setContent {
             ScreenDensity {
@@ -107,15 +113,14 @@ class MainActivity : ComponentActivity() {
         homeTick++
     }
 
-    override fun onResume() {
-        super.onResume()
-        // Пока были в другом приложении, могли что-то установить из магазина.
-        reloadTick++
-    }
-
     override fun onDestroy() {
         runCatching { unregisterReceiver(packageReceiver) }
         super.onDestroy()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (InstalledApps.invalidated) reloadTick++
     }
 
     @Composable
@@ -124,6 +129,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(reloadTick) {
             val loaded = withContext(Dispatchers.IO) { InstalledApps.load(context) }
             apps = loaded
+            appsLoaded = true
             if (config == null) applyConfig(HomeConfig.initial(loaded.keys, getString(R.string.favourites)))
         }
         val photos = remember { Wallpapers.names(context) }
@@ -152,6 +158,7 @@ class MainActivity : ComponentActivity() {
                         CarouselScreen(
                             config = current,
                             apps = apps,
+                            appsLoaded = appsLoaded,
                             focusHome = homeTick,
                             onConfig = ::applyConfig,
                             onLaunch = ::launch,
@@ -162,6 +169,7 @@ class MainActivity : ComponentActivity() {
                         HomeScreen(
                             config = current,
                             apps = apps,
+                            appsLoaded = appsLoaded,
                             focusHome = homeTick,
                             onConfig = ::applyConfig,
                             onLaunch = ::launch,
@@ -234,8 +242,20 @@ class MainActivity : ComponentActivity() {
         val boot = if (bootCount >= 0) "count:$bootCount"
         else "time:${(System.currentTimeMillis() - SystemClock.elapsedRealtime()) / 600_000L}"
         if (store.autostartBoot == boot) return
-        store.autostartBoot = boot
-        if (InstalledApps.isInstalled(this, pkg)) launch(pkg)
+        lifecycleScope.launch {
+            repeat(5) { attempt ->
+                val started = runCatching {
+                    val intent = InstalledApps.launchIntent(this@MainActivity, pkg) ?: return@runCatching false
+                    startActivity(intent)
+                    true
+                }.getOrDefault(false)
+                if (started) {
+                    store.autostartBoot = boot
+                    return@launch
+                }
+                if (attempt < 4) delay(3_000)
+            }
+        }
     }
 }
 

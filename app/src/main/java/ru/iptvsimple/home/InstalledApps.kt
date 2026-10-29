@@ -1,7 +1,9 @@
 package ru.iptvsimple.home
 
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -9,6 +11,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Установленное приложение. [banner] — широкая картинка 16:9 для телевизора; у приложений
@@ -22,8 +25,39 @@ class InstalledApp(
 )
 
 object InstalledApps {
+    private var cached: Map<String, InstalledApp>? = null
+    private var locale = ""
+    private val generation = AtomicInteger()
+    @Volatile
+    private var loadedGeneration = -1
+    val invalidated: Boolean get() = loadedGeneration != generation.get()
+    private var observing = false
+    private data class ImageKey(val pkg: String, val updated: Long)
+    private val images = HashMap<ImageKey, Pair<ImageBitmap?, ImageBitmap?>>()
+
+    fun invalidate() { generation.incrementAndGet() }
+
     /** Все приложения, которые можно запустить. Долго (десятки картинок) — вызывать не с главного потока. */
+    @Synchronized
     fun load(context: Context): Map<String, InstalledApp> {
+        if (!observing) {
+            // Приёмник живёт вместе с кэшем, даже если Activity была уничтожена.
+            context.applicationContext.registerReceiver(object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) { invalidate() }
+            }, IntentFilter().apply {
+                addAction(Intent.ACTION_PACKAGE_ADDED)
+                addAction(Intent.ACTION_PACKAGE_REMOVED)
+                addAction(Intent.ACTION_PACKAGE_CHANGED)
+                addAction(Intent.ACTION_PACKAGE_REPLACED)
+                addDataScheme("package")
+            })
+            observing = true
+        }
+        val loadingGeneration = generation.get()
+        val currentLocale = context.resources.configuration.locales.toLanguageTags()
+        if (loadedGeneration == loadingGeneration && locale == currentLocale) cached?.let { return it }
+        if (locale != currentLocale) images.clear()
+        val used = HashSet<ImageKey>()
         val pm = context.packageManager
         val result = LinkedHashMap<String, InstalledApp>()
         fun collect(category: String) {
@@ -32,20 +66,30 @@ object InstalledApps {
                 val activity = info.activityInfo ?: continue
                 val pkg = activity.packageName
                 if (pkg == context.packageName || pkg in KnownApps.neverShown || pkg in result) continue
-                val banner = runCatching { activity.loadBanner(pm) ?: activity.applicationInfo.loadBanner(pm) }
-                    .getOrNull()
-                val icon = runCatching { activity.loadIcon(pm) }.getOrNull()
+                val updated = runCatching { pm.getPackageInfo(pkg, 0).lastUpdateTime }.getOrNull() ?: continue
+                val key = ImageKey(pkg, updated)
+                used += key
+                val image = images.getOrPut(key) {
+                    val banner = runCatching { activity.loadBanner(pm) ?: activity.applicationInfo.loadBanner(pm) }
+                        .getOrNull()?.toImage(320, 180)
+                    val icon = if (banner == null) runCatching { activity.loadIcon(pm).toImage(160, 160) }.getOrNull() else null
+                    banner to icon
+                }
                 result[pkg] = InstalledApp(
                     pkg = pkg,
                     label = info.loadLabel(pm).toString().trim(),
-                    banner = banner?.toImage(320, 180),
-                    icon = if (banner == null) icon?.toImage(160, 160) else null,
+                    banner = image.first,
+                    icon = image.second,
                 )
             }
         }
         // Сначала приложения для телевизора: у них правильный баннер и запуск.
         collect(Intent.CATEGORY_LEANBACK_LAUNCHER)
         collect(Intent.CATEGORY_LAUNCHER)
+        images.keys.retainAll(used)
+        cached = result
+        locale = currentLocale
+        loadedGeneration = loadingGeneration
         return result
     }
 
@@ -60,7 +104,7 @@ object InstalledApps {
     }.isSuccess
 
     private fun Drawable.toImage(maxWidth: Int, maxHeight: Int): ImageBitmap? {
-        if (this is BitmapDrawable && bitmap != null && bitmap.width <= maxWidth * 2) {
+        if (this is BitmapDrawable && bitmap != null && bitmap.width <= maxWidth * 2 && bitmap.height <= maxHeight * 2) {
             return bitmap.asImageBitmap()
         }
         val w = intrinsicWidth.takeIf { it > 0 } ?: maxWidth

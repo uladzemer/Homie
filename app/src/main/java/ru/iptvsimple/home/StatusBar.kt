@@ -97,10 +97,10 @@ private fun rememberNetState(): NetState {
  * питание и настройки. Подпись появляется у выбранной кнопки.
  */
 @Composable
-fun StatusBar(settingsRequester: FocusRequester, onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
+fun StatusBar(settingsRequester: FocusRequester, onOpenSettings: () -> Unit, modifier: Modifier = Modifier, focusHome: Int = 0) {
     val context = LocalContext.current
     val net = rememberNetState()
-    var powerMenu by remember { mutableStateOf(false) }
+    var powerMenu by remember(focusHome) { mutableStateOf(false) }
 
     val (netIcon, netText) = when (net) {
         NetState.None -> Icons.Rounded.SignalWifiOff to stringResource(R.string.net_none)

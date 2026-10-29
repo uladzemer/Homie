@@ -3,7 +3,9 @@
 **A clean, tvOS‑inspired home screen for Android TV boxes, Google TV and cheap Amlogic / Rockchip
 TV boxes.** Replace the cluttered stock Android TV launcher with calm rows of app tiles, smooth
 focus animations, a parallax lift and glossy highlight — the way Apple TV feels — all set up with
-the remote. No ads, no internet access, no tracking. Free and open source (GPL‑3.0).
+the remote. No ads, analytics or tracking. Internet access is used only to check GitHub releases
+once a day and download updates; update checks are on by default and can be turned off in Settings.
+Free and open source (GPL‑3.0).
 
 ![Homie home screen: Apple TV style rows of apps on Android TV](docs/screenshots/en-home.jpg)
 
@@ -38,7 +40,9 @@ the remote. No ads, no internet access, no tracking. Free and open source (GPL�
   a light picture on a transparent background). Originals are backed up and can be restored
   from Settings. Supported: Amlogic boxes (logo partition) + standard Android boot animation.
 - **English and Russian** — follows the system language.
-- **Private.** No ads, no analytics, no internet permission.
+- **Private.** No ads, analytics or tracking. The INTERNET permission is used only to check
+  GitHub releases once a day and download updates. Update checks are on by default and can be
+  turned off in Settings.
 
 Works on Android 8.0+ TV devices: Android TV boxes (X96, H96, Tanix, Mecool, Ugoos…),
 Chromecast with Google TV, NVIDIA Shield, Xiaomi Mi Box, projectors and TVs with Android TV.
@@ -86,7 +90,9 @@ Google LLC. App logos in the screenshots belong to their owners.
 
 **Homie — главный экран в стиле Apple TV для приставок на Android TV.** Заменяет стандартный
 лаунчер на спокойные ряды плиток с плавной анимацией фокуса, как на Apple TV. Всё настраивается
-пультом. Без рекламы, без интернета, без сбора данных.
+пультом. Без рекламы, аналитики и слежки. Разрешение INTERNET используется только для проверки
+релизов GitHub раз в сутки и скачивания обновлений. Проверка включена по умолчанию и отключается
+в настройках.
 
 - **Ряды приложений.** Первый ряд — «док» на матовой подложке, ниже свои ряды
   («Телевидение», «Кино», «Детям»…) и «Остальные приложения». Новые приложения появляются сами.

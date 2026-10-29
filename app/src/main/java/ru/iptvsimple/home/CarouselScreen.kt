@@ -30,7 +30,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +76,7 @@ fun CarouselScreen(
     config: HomeConfig,
     apps: Map<String, InstalledApp>,
     focusHome: Int,
+    appsLoaded: Boolean,
     onConfig: (HomeConfig) -> Unit,
     onLaunch: (String) -> Unit,
     onOpenSettings: () -> Unit,
@@ -96,9 +96,9 @@ fun CarouselScreen(
         }
     }
 
-    var shelfIndex by remember { mutableIntStateOf(0) }
+    var selectedRow by remember { mutableStateOf<Long?>(config.rows.firstOrNull()?.id) }
     // Выбранная обложка в каждом ряду запоминается по пакету: после перестановки она остаётся в центре.
-    val selected = remember { mutableStateMapOf<Int, String>() }
+    val selected = remember { mutableStateMapOf<Long?, String>() }
     var moving by remember { mutableStateOf(false) }
     var menuFor by remember { mutableStateOf<String?>(null) }
     var focused by remember { mutableStateOf(false) }
@@ -106,32 +106,33 @@ fun CarouselScreen(
     val carouselRequester = remember { FocusRequester() }
     val settingsRequester = remember { FocusRequester() }
 
-    shelfIndex = shelfIndex.coerceIn(0, (shelves.size - 1).coerceAtLeast(0))
+    val shelfIndex = shelves.indexOfFirst { it.rowId == selectedRow }.coerceAtLeast(0)
+    fun selectShelf(i: Int) { selectedRow = shelves.getOrNull(i)?.rowId }
     val shelf = shelves.getOrNull(shelfIndex)
-    val index = shelf?.apps?.indexOfFirst { it.pkg == selected[shelfIndex] }?.takeIf { it >= 0 } ?: 0
+    val index = shelf?.apps?.indexOfFirst { it.pkg == selected[shelf.rowId] }?.takeIf { it >= 0 } ?: 0
     val current = shelf?.apps?.getOrNull(index)
 
-    LaunchedEffect(focusHome, apps.isNotEmpty()) {
-        if (apps.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(focusHome, appsLoaded, shelves.isEmpty()) {
         moving = false
-        shelfIndex = 0
+        menuFor = null
+        selectShelf(0)
+        if (!appsLoaded) return@LaunchedEffect
         withFrameNanos { }
         runCatching { (if (shelves.isNotEmpty()) carouselRequester else settingsRequester).requestFocus() }
     }
 
     fun select(i: Int) {
         val list = shelf?.apps ?: return
-        selected[shelfIndex] = list[i.coerceIn(0, list.lastIndex)].pkg
+        selected[shelf.rowId] = list[i.coerceIn(0, list.lastIndex)].pkg
     }
 
     fun move(dx: Int, dy: Int) {
         val pkg = current?.pkg ?: return
         val updated = config.moveApp(pkg, dx, dy) ?: return
         onConfig(updated)
-        if (dy != 0) {
-            shelfIndex = (shelfIndex + dy).coerceAtLeast(0)
-            selected[shelfIndex] = pkg
-        }
+        val position = carouselPosition(updated.rows, apps.keys, pkg) ?: return
+        selectedRow = position.rowId
+        selected[position.rowId] = pkg
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -139,7 +140,7 @@ fun CarouselScreen(
         Column(Modifier.fillMaxSize().padding(horizontal = 44.dp)) {
             Box(Modifier.fillMaxWidth().padding(top = 26.dp)) {
                 if (config.showClock) ClassicClock()
-                StatusBar(settingsRequester, onOpenSettings, Modifier.align(Alignment.TopEnd))
+                StatusBar(settingsRequester, onOpenSettings, Modifier.align(Alignment.TopEnd), focusHome)
             }
             // Кнопки рядов: выбранный ряд — голубое выпуклое стекло.
             Row(
@@ -176,13 +177,13 @@ fun CarouselScreen(
                         AndroidKeyEvent.KEYCODE_DPAD_LEFT -> { if (e.type == KeyEventType.KeyDown) select(index - 1); true }
                         AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> { if (e.type == KeyEventType.KeyDown) select(index + 1); true }
                         AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
-                            if (e.type == KeyEventType.KeyDown && shelfIndex < shelves.lastIndex) shelfIndex++
+                            if (e.type == KeyEventType.KeyDown && shelfIndex < shelves.lastIndex) selectShelf(shelfIndex + 1)
                             true
                         }
                         // С первого ряда «вверх» — на кнопки сети, питания и настроек.
                         AndroidKeyEvent.KEYCODE_DPAD_UP -> {
                             if (shelfIndex == 0) return@onKeyEvent false
-                            if (e.type == KeyEventType.KeyDown) shelfIndex--
+                            if (e.type == KeyEventType.KeyDown) selectShelf(shelfIndex - 1)
                             true
                         }
                         else -> false
@@ -203,7 +204,7 @@ fun CarouselScreen(
             ) { i ->
                 val s = shelves.getOrNull(i)
                 if (s != null) {
-                    val idx = s.apps.indexOfFirst { it.pkg == selected[i] }.takeIf { it >= 0 } ?: 0
+                    val idx = s.apps.indexOfFirst { it.pkg == selected[s.rowId] }.takeIf { it >= 0 } ?: 0
                     Carousel(s.apps, idx, coverWidth, highlight = focused, moving = moving, pressed = pressed)
                 }
             }
@@ -229,7 +230,7 @@ fun CarouselScreen(
                     fontSize = ts(12f),
                     modifier = Modifier.padding(top = 2.dp),
                 )
-            } else if (apps.isEmpty()) {
+            } else if (!appsLoaded) {
                 Text(stringResource(R.string.loading_apps), color = Palette.InkSoft, fontSize = ts(14f))
             }
         }
