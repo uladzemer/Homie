@@ -16,8 +16,10 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -50,14 +52,15 @@ fun <T> liftSpring() = spring<T>(dampingRatio = 0.9f, stiffness = 120f)
 @Composable
 fun rememberFocusMotion(focused: Boolean, pressed: Boolean): FocusMotion {
     val lift = animateFloatAsState(if (focused) 1f else 0f, liftSpring(), label = "lift")
-    val press = animateFloatAsState(if (pressed) 1f else 0f, spring(dampingRatio = 0.85f, stiffness = 500f), label = "press")
+    val press = animateFloatAsState(if (focused && pressed) 1f else 0f, spring(dampingRatio = 0.85f, stiffness = 500f), label = "press")
     val tiltX = remember { Animatable(0f) }
     val tiltY = remember { Animatable(0f) }
     val sheen = remember { Animatable(-1f) }
     LaunchedEffect(focused) {
         if (!focused) {
-            launch { tiltX.animateTo(0f, spring(stiffness = 120f)) }
-            launch { tiltY.animateTo(0f, spring(stiffness = 120f)) }
+            tiltX.snapTo(0f)
+            tiltY.snapTo(0f)
+            sheen.snapTo(-1f)
             return@LaunchedEffect
         }
         launch {
@@ -98,33 +101,35 @@ fun Modifier.focusLift(motion: FocusMotion, shape: Shape, maxScale: Float = 1.1f
     }
 
 /** Блик и верхний отсвет поверх содержимого плитки. Ставится после clip. */
-fun Modifier.focusGloss(motion: FocusMotion): Modifier = drawWithContent {
-    drawContent()
-    val lift = motion.lift.value.coerceIn(0f, 1f)
-    if (lift <= 0.01f) return@drawWithContent
-    // Мягкий свет сверху — стекло «ловит» лампу.
-    drawRect(
-        Brush.verticalGradient(
-            0f to Color.White.copy(alpha = 0.10f * lift),
-            0.55f to Color.Transparent,
-        ),
+fun Modifier.focusGloss(motion: FocusMotion): Modifier = drawWithCache {
+    // Кисти и остановки градиента не создаются заново на каждом кадре блика.
+    val top = Brush.verticalGradient(
+        0f to Color.White.copy(alpha = 0.10f),
+        0.55f to Color.Transparent,
     )
-    // Медленно проходящий наискось широкий блик.
-    val p = motion.sheen.value
-    if (p > -0.5f && p < 1.5f) {
-        val w = size.width
-        val center = w * p
-        drawRect(
-            Brush.linearGradient(
-                0f to Color.Transparent,
-                0.38f to Color.White.copy(alpha = 0.0f),
-                0.5f to Color.White.copy(alpha = 0.16f * lift),
-                0.62f to Color.White.copy(alpha = 0.0f),
-                1f to Color.Transparent,
-                start = Offset(center - w * 0.7f, 0f),
-                end = Offset(center + w * 0.7f, size.height),
-            ),
-        )
+    val w = size.width
+    val sheenSize = Size(w * 1.4f, size.height)
+    val sheen = Brush.linearGradient(
+        0f to Color.Transparent,
+        0.38f to Color.White.copy(alpha = 0f),
+        0.5f to Color.White.copy(alpha = 0.16f),
+        0.62f to Color.White.copy(alpha = 0f),
+        1f to Color.Transparent,
+        start = Offset(-w * 0.7f, 0f),
+        end = Offset(w * 0.7f, size.height),
+    )
+    onDrawWithContent {
+        drawContent()
+        val lift = motion.lift.value.coerceIn(0f, 1f)
+        if (lift > 0.01f) {
+            drawRect(top, alpha = lift)
+            val p = motion.sheen.value
+            if (p > -0.5f && p < 1.5f) {
+                withTransform({ translate(left = w * p) }) {
+                    drawRect(sheen, topLeft = Offset(-w * 0.7f, 0f), size = sheenSize, alpha = lift)
+                }
+            }
+        }
     }
 }
 
