@@ -58,9 +58,10 @@ fun rememberFocusMotion(focused: Boolean, pressed: Boolean): FocusMotion {
     val sheen = remember { Animatable(-1f) }
     LaunchedEffect(focused) {
         if (!focused) {
-            tiltX.snapTo(0f)
-            tiltY.snapTo(0f)
+            // Наклон плавно гаснет, как раньше; блик снимаем сразу — он всё равно умножается на подъём.
             sheen.snapTo(-1f)
+            launch { tiltX.animateTo(0f, spring(stiffness = 120f)) }
+            launch { tiltY.animateTo(0f, spring(stiffness = 120f)) }
             return@LaunchedEffect
         }
         launch {

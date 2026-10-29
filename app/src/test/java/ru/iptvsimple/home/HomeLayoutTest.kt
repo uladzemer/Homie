@@ -13,7 +13,7 @@ class HomeLayoutTest {
     fun filtersOnceAndKeepsDockAndGridKeys() {
         val config = HomeConfig(rows = listOf(HomeRow(10, "Dock", listOf("b", "missing")), HomeRow(20, "Empty", emptyList())), hidden = setOf("hidden"))
         val lines = homeLines(config, apps("a", "b", "c", "d", "e", "f", "g", "hidden"), "Others")
-        assertEquals(listOf("row:10", "row:20", "others:a", "others:f"), lines.map { it.id })
+        assertEquals(listOf("row:10", "row:20", "others:0", "others:1"), lines.map { it.id })
         assertTrue(lines[0].dock)
         assertNull(lines[0].title)
         assertEquals(listOf("b"), lines[0].apps.map { it.pkg })
@@ -26,13 +26,12 @@ class HomeLayoutTest {
     }
 
     @Test
-    fun restoresPackageAndClampsColumnAfterRemoval() {
+    fun clampsColumnAfterRemoval() {
         val line = TileLine("row:10", null, apps("a", "b", "c").values.toList())
-        assertEquals("c", line.focusPackage("c", 0))
-        assertEquals("b", line.focusPackage("removed", 1))
-        assertEquals("c", line.focusPackage(null, 10))
-        assertEquals("a", line.focusPackage(null, -1))
-        assertNull(TileLine("empty", null, emptyList()).focusPackage("removed", 0))
+        assertEquals("b", line.focusPackage(1))
+        assertEquals("c", line.focusPackage(10))
+        assertEquals("a", line.focusPackage(-1))
+        assertNull(TileLine("empty", null, emptyList()).focusPackage(0))
     }
 
     @Test
@@ -47,6 +46,6 @@ class HomeLayoutTest {
         val moved = homeLines(config.moveApp("a", 0, 1)!!, installed, "Others")
         assertEquals("row:20", moved.first { it.apps.any { app -> app.pkg == "a" } }.id)
         assertEquals(1, nextFocusLine(moved, 2, up = true))
-        assertEquals("a", moved[1].focusPackage(null, 10))
+        assertEquals("a", moved[1].focusPackage(10))
     }
 }

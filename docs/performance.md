@@ -40,18 +40,20 @@ on the owner's box; no device performance measurements are claimed here.
 - Home, menu return and move restoration scroll to an absent row/tile with `scrollToItem`, wait
   a frame, then request focus by package. Requests wait for the menu to close. Removed/hidden
   packages fall back to the first visible tile, or Settings on an empty home screen.
-- Vertical navigation explicitly restores the last package in a row, replacing pinned-node
-  `focusRestorer` behavior so moved/deleted nodes are not retained. First entry picks the closest
-  available screen column. Empty rows are skipped. Up from the first nonempty row uses native
-  search into StatusBar; Down from StatusBar returns to that row's remembered tile.
+- Vertical navigation is explicit because lazy rows may not be composed yet: like the old
+  non-lazy screen, it picks the tile closest by screen column in the next nonempty row (empty
+  rows are skipped). Up from the first nonempty row uses native search into StatusBar; Down from
+  StatusBar goes to the first nonempty row.
 - Repeated vertical keys are consumed while a focus request is awaiting layout, so repeats do
   not continually cancel that request. This needs a held-key check on a slow box.
 - Highest risks: lazy beyond-bounds horizontal search, moving the last tile out of a row,
   rebuilding grid lines after hiding/removing apps, and Home/menu requests during rapid input.
   Offscreen restoration can visibly jump before pivot scrolling settles. Unit tests cover the
   topology and package fallback, not Android's focus engine or on-device clipping.
-- Reflections intentionally differ slightly. Check their fade, the cover overlap order and
-  viewport edges at Small/Huge sizes. No other intentional visual redesign was made.
+- Reflections intentionally differ: an opaque fade overlay instead of an alpha mask, drawn only
+  on the selected shelf; the highlight, motion and gloss also apply only to the selected shelf.
+  Check their fade, the cover overlap order while holding Left/Right, and viewport edges at
+  Small/Huge sizes.
 
 ## Owner checklist — D-pad on a real box
 

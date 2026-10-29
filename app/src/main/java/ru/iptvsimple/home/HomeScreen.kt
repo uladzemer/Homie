@@ -109,8 +109,6 @@ fun HomeScreen(
     val scroll = rememberLazyListState()
     val rowScrolls = remember { HashMap<String, LazyListState>() }
     fun rowScroll(id: String) = rowScrolls.getOrPut(id) { LazyListState() }
-    // Аналог focusRestorer без удержания удалённой плитки: память ряда переживает его выгрузку.
-    val lastFocused = remember { HashMap<String, String>() }
     var focusedPackage by remember { mutableStateOf<String?>(null) }
     var headerFocused by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -119,7 +117,6 @@ fun HomeScreen(
     LaunchedEffect(lines, apps) {
         val ids = lines.mapTo(HashSet()) { it.id }
         rowScrolls.keys.retainAll(ids)
-        lastFocused.keys.retainAll(ids)
         requesters.keys.retainAll(apps.keys)
     }
 
@@ -136,10 +133,11 @@ fun HomeScreen(
     fun focusLine(r: Int, source: Pair<Int, Int>?) {
         val line = lines[r]
         val x = source?.let { (row, tile) -> rowScroll(lines[row].id).layoutInfo.visibleItemsInfo.firstOrNull { it.index == tile }?.offset } ?: 0
-        // При первом входе — ближайшая по экрану плитка, при возврате — сохранённый пакет.
-        val column = rowScroll(line.id).layoutInfo.visibleItemsInfo.minByOrNull { abs(it.offset - x) }?.index
-            ?: (x / tileStride).roundToInt().coerceAtLeast(0)
-        val pkg = line.focusPackage(lastFocused[line.id], column) ?: return
+        // Как раньше: ближайшая по экрану плитка соседнего ряда, даже если он ещё не создан.
+        val target = rowScroll(line.id)
+        val column = target.layoutInfo.visibleItemsInfo.minByOrNull { abs(it.offset - x) }?.index
+            ?: (target.firstVisibleItemIndex + (x / tileStride).roundToInt()).coerceAtLeast(0)
+        val pkg = line.focusPackage(column) ?: return
         focusJob?.cancel()
         focusJob = scope.launch { focusTile(pkg) }
     }
@@ -250,7 +248,6 @@ fun HomeScreen(
                                     onFocusChange = {
                                         if (it) {
                                             focusedPackage = app.pkg
-                                            lastFocused[line.id] = app.pkg
                                             onDeepFocus(!line.dock)
                                         } else if (focusedPackage == app.pkg) focusedPackage = null
                                     },
