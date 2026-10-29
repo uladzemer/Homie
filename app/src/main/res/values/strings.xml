@@ -127,6 +127,7 @@
     <string name="boot_animation_backup_unknown">The original animation backup or its state is missing. Restore the firmware animation manually before trying again.</string>
     <string name="boot_command_failed">Root command failed (exit %1$s): %2$s</string>
     <string name="boot_partial">Some startup files may have changed. The selection was not saved. %1$s</string>
+    <string name="boot_rolled_back">The change failed; the original logo was restored. %1$s</string>
     <!-- Updates -->
     <string name="updates">Check for Updates</string>
     <string name="on">On</string>

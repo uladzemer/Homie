@@ -193,6 +193,7 @@ object Updater {
                 cp '${file.path}' "${'$'}tmp" && chmod 644 "${'$'}tmp" && pm install -r "${'$'}tmp"
                 """
             coroutineContext.ensureActive()
+            // Во время root-staging отмену не проверяем: ставится проверенный новый Homie с той же подписью.
             val out = Root.run(script)
             if (out.success && "Success" in out.output) return
         }

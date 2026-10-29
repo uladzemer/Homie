@@ -8,6 +8,8 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /** Синтетический раздел с двумя картинками и свободным хвостом, без Android. */
 class AmlResTest {
@@ -45,6 +47,8 @@ class AmlResTest {
         val original = src.copyOf()
         val body = ByteArray(90) { (it + 30).toByte() }
         val result = assertNotNull(AmlRes.replace(src, "bootup", body))
+        assertTrue(AmlRes.isValid(src))
+        assertTrue(AmlRes.isValid(result))
         val b = buffer(result)
         assertEquals(src.size, result.size)
         assertContentEquals(original, src)
@@ -74,11 +78,15 @@ class AmlResTest {
     }
 
     @Test fun refusesTruncatedHeaderAndWrongFormat() {
-        for (size in listOf(0, 7, 16, 63)) assertNull(AmlRes.replace(ByteArray(size), "bootup", bootup))
+        for (size in listOf(0, 7, 16, 63)) {
+            assertFalse(AmlRes.isValid(ByteArray(size)))
+            assertNull(AmlRes.replace(ByteArray(size), "bootup", bootup))
+        }
         for ((offset, value) in listOf(4 to 1, 8 to 0, 16 to 0, 16 to 2048, 20 to 0, 20 to 65, 24 to 0, 24 to -1)) {
             val src = image()
             buffer(src).putInt(offset, value)
             if (offset != 16) sign(src)
+            assertFalse(AmlRes.isValid(src), "offset=$offset value=$value")
             assertNull(AmlRes.replace(src, "bootup", bootup), "offset=$offset value=$value")
         }
         assertNull(AmlRes.replace(image().also { it[200] = 88 }, "bootup", bootup))
@@ -90,6 +98,7 @@ class AmlResTest {
             val src = image()
             buffer(src).putInt(offset, value)
             sign(src)
+            assertFalse(AmlRes.isValid(src), "offset=$offset value=$value")
             assertNull(AmlRes.replace(src, "bootup", bootup), "offset=$offset value=$value")
         }
     }

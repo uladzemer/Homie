@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        autostartJob?.cancel()
         // Нажали «Домой», когда главный экран уже открыт: закрываем настройки, фокус на первую плитку.
         showSettings = false
         homeTick++
@@ -178,7 +179,7 @@ class MainActivity : ComponentActivity() {
                             focusHome = homeTick,
                             onConfig = ::applyConfig,
                             onLaunch = ::launch,
-                            onOpenSettings = { showSettings = true },
+                            onOpenSettings = ::openSettings,
                         )
                     } else {
                         BackdropLayer(current, photos, dim = deep && !showSettings)
@@ -189,7 +190,7 @@ class MainActivity : ComponentActivity() {
                             focusHome = homeTick,
                             onConfig = ::applyConfig,
                             onLaunch = ::launch,
-                            onOpenSettings = { showSettings = true },
+                            onOpenSettings = ::openSettings,
                             onDeepFocus = { deep = it },
                         )
                     }
@@ -245,6 +246,11 @@ class MainActivity : ComponentActivity() {
 
     private fun versionName(): String =
         runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull().orEmpty()
+
+    private fun openSettings() {
+        autostartJob?.cancel()
+        showSettings = true
+    }
 
     /**
      * Автозапуск выбранного приложения — один раз за включение приставки. Главный экран и так
