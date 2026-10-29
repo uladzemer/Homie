@@ -14,11 +14,16 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.file.Files
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.CRC32
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import kotlin.math.max
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.thread
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -69,89 +74,243 @@ object BootScreen {
     private fun prefs(context: Context) = context.getSharedPreferences("home", Context.MODE_PRIVATE)
     private const val KEY = "boot_logo"
 
-    /** Ставит выбранную заставку. Долго (секунды): вызывать не в главном потоке. */
-    fun apply(context: Context, choice: BootLogo): Result = runCatching {
-        if (!Root.available()) return Result.NoRoot
-        val result = if (choice == BootLogo.Stock) restore() else install(context, choice)
-        if (result == Result.Done || result == Result.DoneAnimationOnly) {
-            prefs(context).edit().putString(KEY, choice.name).apply()
-        }
-        result
-    }.getOrElse { Result.Failed(it.message ?: it.javaClass.simpleName) }
+    private val mutex = Mutex()
 
-    private fun install(context: Context, choice: BootLogo): Result {
-        val dir = File(context.cacheDir, "boot").apply { deleteRecursively(); mkdirs() }
-        val path = dir.absolutePath
-        // Резервные копии (только один раз) и исходный раздел logo для пересборки.
-        val prep = Root.run(
-            """
-            mkdir -p $BACKUP
-            if [ -e /dev/block/logo ]; then
-              [ -f $BACKUP/logo.img ] || dd if=/dev/block/logo of=$BACKUP/logo.img bs=4096
-              cp $BACKUP/logo.img $path/logo.src && chmod 644 $path/logo.src
-            fi
-            if [ -f $ODM_BOOTUP ]; then [ -f $BACKUP/odm_bootup.bmp ] || cp $ODM_BOOTUP $BACKUP/odm_bootup.bmp; fi
-            if [ -f $CUSTOM_PATH ]; then cp $CUSTOM_PATH $path/custom.png && chmod 644 $path/custom.png; fi
-            echo ok
-            """,
-        )
-        if (!prep.contains("ok")) return Result.Failed(prep.trim().takeLast(200))
-
-        val art = when (choice) {
-            BootLogo.Custom -> BitmapFactory.decodeFile("$path/custom.png") ?: return Result.NoCustomImage
-            else -> homieWordmark(context)
-        }
-        val still = frame(art, barAlpha = 0f, progress = 0f, block = false)
-        File(dir, "bootanimation.zip").writeBytes(bootAnimation(art))
-        File(dir, "bootup.bmp").writeBytes(bmp565(still))
-        val logoSrc = File(dir, "logo.src")
-        val logoNew = logoSrc.takeIf { it.exists() }?.readBytes()?.let { AmlRes.replace(it, "bootup", gzipNamed("bootup", bmp565(still))) }
-        logoNew?.let { File(dir, "logo.new").writeBytes(it) }
-
-        val out = Root.run(
-            """
-            ${if (logoNew != null) "dd if=$path/logo.new of=/dev/block/logo bs=4096 && sync" else ""}
-            if [ -f $ODM_BOOTUP ]; then
-              mount -o remount,rw /mnt/vendor/odm_ext && cp $path/bootup.bmp $ODM_BOOTUP && sync && echo odm
-              mount -o remount,ro /mnt/vendor/odm_ext
-            fi
-            P=${'$'}(cat $BACKUP/anim_path 2>/dev/null)
-            if [ -z "${'$'}P" ]; then
-              if grep -q " /oem " /proc/mounts; then P=/oem; elif grep -q " /product " /proc/mounts; then P=/product; fi
-              echo "${'$'}P" > $BACKUP/anim_path
-            fi
-            [ -n "${'$'}P" ] || { echo noanim; exit 1; }
-            mount -o remount,rw ${'$'}P
-            mkdir -p ${'$'}P/media
-            cp $path/bootanimation.zip ${'$'}P/media/bootanimation.zip
-            chmod 755 ${'$'}P/media; chmod 644 ${'$'}P/media/bootanimation.zip
-            sync
-            mount -o remount,ro ${'$'}P
-            echo ok
-            """,
-        )
-        dir.deleteRecursively()
-        if (!out.contains("ok")) return Result.Failed(out.trim().takeLast(200))
-        return if (logoNew != null || out.contains("odm")) Result.Done else Result.DoneAnimationOnly
+    /** Ставит заставку под общей для процесса блокировкой; вызывать вне главного потока. */
+    suspend fun apply(context: Context, choice: BootLogo): Result = mutex.withLock {
+        runCatching {
+            val root = Root.run("id", 10)
+            if (root.timedOut) return@withLock failure(context, root)
+            if (!root.success || !Regex("\\buid=0\\b").containsMatchIn(root.output)) return@withLock Result.NoRoot
+            val result = if (choice == BootLogo.Stock) restore(context) else install(context, choice)
+            if (result == Result.Done || result == Result.DoneAnimationOnly) {
+                prefs(context).edit().putString(KEY, choice.name).apply()
+            }
+            result
+        }.getOrElse { Result.Failed(it.message ?: it.javaClass.simpleName) }
     }
 
-    private fun restore(): Result {
-        val out = Root.run(
-            """
-            [ -f $BACKUP/logo.img ] && dd if=$BACKUP/logo.img of=/dev/block/logo bs=4096 && sync
-            if [ -f $BACKUP/odm_bootup.bmp ] && [ -f $ODM_BOOTUP ]; then
-              mount -o remount,rw /mnt/vendor/odm_ext && cp $BACKUP/odm_bootup.bmp $ODM_BOOTUP && sync
-              mount -o remount,ro /mnt/vendor/odm_ext
+    private fun install(context: Context, choice: BootLogo): Result {
+        val dir = Files.createTempDirectory(context.cacheDir.toPath(), "boot-").toFile()
+        val path = dir.absolutePath
+        try {
+            // Резервные копии проверяются до любой записи в прошивку.
+            val prep = Root.run(script("""
+                mkdir -p $BACKUP
+                chmod 700 $BACKUP
+                if [ -e /dev/block/logo ] || [ -e $BACKUP/logo.img ]; then
+                  if [ ! -e $BACKUP/logo.img ] && [ ! -e $BACKUP/logo.img.sha256 ]; then
+                    partition_size
+                    step dd if=/dev/block/logo of=$BACKUP/logo.img.tmp bs=4096
+                    [ "${'$'}(stat -c %s $BACKUP/logo.img.tmp)" = "${'$'}SIZE" ] || exit 65
+                    digest $BACKUP/logo.img.tmp > $BACKUP/logo.img.sha256.tmp
+                    step sync
+                    mv $BACKUP/logo.img.tmp $BACKUP/logo.img
+                    mv $BACKUP/logo.img.sha256.tmp $BACKUP/logo.img.sha256
+                    step sync
+                  fi
+                  verify_logo $BACKUP/logo.img
+                  step cp $BACKUP/logo.img '$path/logo.src'
+                  chmod 644 '$path/logo.src'
+                  verify_logo '$path/logo.src'
+                fi
+                if [ -f $ODM_BOOTUP ] && [ ! -e $BACKUP/odm_bootup.bmp ]; then
+                  save_file $ODM_BOOTUP $BACKUP/odm_bootup.bmp
+                fi
+                if [ ! -f $BACKUP/animation.state ]; then
+                  [ ! -e $BACKUP/anim_path ] || exit 66
+                  if grep -q ' /oem ' /proc/mounts; then P=/oem
+                  elif grep -q ' /product ' /proc/mounts; then P=/product
+                  else echo 'animation mount missing'; exit 1; fi
+                  ORIGINAL=absent
+                  if [ -e "${'$'}P/media/bootanimation.zip" ]; then
+                    save_file "${'$'}P/media/bootanimation.zip" $BACKUP/bootanimation.zip
+                    ORIGINAL=present
+                  fi
+                  echo "${'$'}P ${'$'}ORIGINAL" > $BACKUP/animation.state.tmp
+                  mv $BACKUP/animation.state.tmp $BACKUP/animation.state
+                  step sync
+                fi
+                animation_state
+                if [ -f $CUSTOM_PATH ]; then
+                  step cp $CUSTOM_PATH '$path/custom.png'
+                  chmod 644 '$path/custom.png'
+                fi
+            """))
+            if (!prep.success) return failure(context, prep)
+
+            val art = when (choice) {
+                BootLogo.Custom -> customArt("$path/custom.png") ?: return Result.NoCustomImage
+                else -> homieWordmark(context)
+            }
+            val logoNew = try {
+                val still = frame(art, barAlpha = 0f, progress = 0f, block = false)
+                val bmp = try { bmp565(still) } finally { still.recycle() }
+                File(dir, "bootanimation.zip").writeBytes(bootAnimation(art))
+                File(dir, "bootup.bmp").writeBytes(bmp)
+                File(dir, "logo.src").takeIf { it.exists() }?.readBytes()?.let {
+                    AmlRes.replace(it, "bootup", gzipNamed("bootup", bmp))
+                }
+            } finally { art.recycle() }
+            logoNew?.let { File(dir, "logo.new").writeBytes(it) }
+
+            val out = Root.run(script("""
+                animation_state
+                ${if (logoNew != null) """
+                verify_logo $BACKUP/logo.img
+                partition_size
+                [ "${'$'}(stat -c %s '$path/logo.new')" = "${'$'}SIZE" ] || exit 65
+                echo writing:logo
+                step dd if='$path/logo.new' of=/dev/block/logo bs=4096
+                step sync
+                step cmp -s '$path/logo.new' /dev/block/logo
+                echo written:logo
+                """ else ""}
+                if [ -f $ODM_BOOTUP ]; then
+                  echo writing:odm
+                  rw /mnt/vendor/odm_ext
+                  step cp '$path/bootup.bmp' $ODM_BOOTUP
+                  step sync
+                  step cmp -s '$path/bootup.bmp' $ODM_BOOTUP
+                  echo written:odm
+                fi
+                echo writing:animation
+                rw "${'$'}P"
+                mkdir -p "${'$'}P/media"
+                step cp '$path/bootanimation.zip' "${'$'}P/media/bootanimation.zip"
+                chmod 755 "${'$'}P/media"
+                chmod 644 "${'$'}P/media/bootanimation.zip"
+                step sync
+                step cmp -s '$path/bootanimation.zip' "${'$'}P/media/bootanimation.zip"
+            """))
+            if (!out.success) return failure(context, out)
+            return if (logoNew != null || "written:odm" in out.output.lineSequence()) Result.Done else Result.DoneAnimationOnly
+        } finally { dir.deleteRecursively() }
+    }
+
+    private fun restore(context: Context): Result {
+        val out = Root.run(script("""
+            # Сначала проверяем все сохранённые данные, затем меняем разделы.
+            if [ -e $BACKUP/logo.img ] || [ -e $BACKUP/logo.img.sha256 ]; then verify_logo $BACKUP/logo.img; fi
+            if [ -e $BACKUP/animation.state ]; then animation_state
+            elif [ -e $BACKUP/anim_path ]; then exit 66; fi
+            if [ -f $BACKUP/logo.img ]; then
+              echo writing:logo
+              step dd if=$BACKUP/logo.img of=/dev/block/logo bs=4096
+              step sync
+              step cmp -s $BACKUP/logo.img /dev/block/logo
             fi
-            P=${'$'}(cat $BACKUP/anim_path 2>/dev/null)
-            if [ -n "${'$'}P" ] && [ -f ${'$'}P/media/bootanimation.zip ]; then
-              mount -o remount,rw ${'$'}P && rm -f ${'$'}P/media/bootanimation.zip && sync
-              mount -o remount,ro ${'$'}P
+            if [ -f $BACKUP/odm_bootup.bmp ]; then
+              echo writing:odm
+              rw /mnt/vendor/odm_ext
+              step cp -p $BACKUP/odm_bootup.bmp $ODM_BOOTUP
+              step sync
+              step cmp -s $BACKUP/odm_bootup.bmp $ODM_BOOTUP
             fi
-            echo ok
-            """,
-        )
-        return if (out.contains("ok")) Result.Done else Result.Failed(out.trim().takeLast(200))
+            if [ -f $BACKUP/animation.state ]; then
+              echo writing:animation
+              rw "${'$'}P"
+              if [ "${'$'}ORIGINAL" = present ]; then
+                mkdir -p "${'$'}P/media"
+                step cp -p $BACKUP/bootanimation.zip "${'$'}P/media/bootanimation.zip"
+                step cmp -s $BACKUP/bootanimation.zip "${'$'}P/media/bootanimation.zip"
+              else
+                rm -f "${'$'}P/media/bootanimation.zip"
+              fi
+              step sync
+            fi
+        """))
+        return if (out.success) Result.Done else failure(context, out)
+    }
+
+    /** EXIT срабатывает и при ошибке; внутренний таймер оставляет время на remount,ro. */
+    private fun script(body: String): String = """
+        set -e
+        RW=''
+        WATCHDOG=''
+        CHILD=''
+        cleanup() {
+          STATUS=${'$'}?
+          trap - EXIT HUP INT TERM
+          set +e
+          if [ -n "${'$'}WATCHDOG" ]; then kill "${'$'}WATCHDOG" 2>/dev/null; fi
+          for TARGET in ${'$'}RW; do
+            if ! mount -o remount,ro "${'$'}TARGET"; then echo "remount-ro:${'$'}TARGET"; STATUS=74; fi
+          done
+          exit "${'$'}STATUS"
+        }
+        trap cleanup EXIT
+        stop() {
+          trap '' HUP INT TERM
+          if [ -n "${'$'}CHILD" ]; then
+            kill -KILL "${'$'}CHILD" 2>/dev/null || :
+            wait "${'$'}CHILD" 2>/dev/null || :
+          fi
+          exit "${'$'}1"
+        }
+        trap 'stop 124' TERM
+        trap 'stop 130' HUP INT
+        MAIN=${'$'}${'$'}
+        (sleep 50; kill -TERM "${'$'}MAIN") >/dev/null 2>&1 &
+        WATCHDOG=${'$'}!
+        # wait прерывается сигналом сразу; зависший dd/cp не переживёт таймаут оболочки.
+        step() { "${'$'}@" & CHILD=${'$'}!; wait "${'$'}CHILD"; CHILD=''; }
+        rw() { RW="${'$'}1 ${'$'}RW"; step mount -o remount,rw "${'$'}1"; }
+        partition_size() {
+          SIZE=${'$'}(blockdev --getsize64 /dev/block/logo) || exit 65
+          case "${'$'}SIZE" in ''|*[!0-9]*) exit 65;; esac
+          [ "${'$'}SIZE" -gt 0 ] || exit 65
+        }
+        digest() {
+          HASH=${'$'}(sha256sum "${'$'}1") || exit 65
+          echo "${'$'}{HASH%% *}"
+        }
+        verify_logo() {
+          partition_size
+          [ -f "${'$'}1" ] && [ -f $BACKUP/logo.img.sha256 ] || exit 65
+          [ "${'$'}(stat -c %s "${'$'}1")" = "${'$'}SIZE" ] || exit 65
+          EXPECTED=${'$'}(cat $BACKUP/logo.img.sha256)
+          [ -n "${'$'}EXPECTED" ] && [ "${'$'}(digest "${'$'}1")" = "${'$'}EXPECTED" ] || exit 65
+        }
+        save_file() {
+          step cp -p "${'$'}1" "${'$'}2.tmp"
+          step cmp -s "${'$'}1" "${'$'}2.tmp"
+          step sync
+          mv "${'$'}2.tmp" "${'$'}2"
+        }
+        animation_state() {
+          [ -f $BACKUP/animation.state ] || exit 66
+          read P ORIGINAL EXTRA < $BACKUP/animation.state || exit 66
+          case "${'$'}P" in /oem|/product) ;; *) exit 66;; esac
+          [ -z "${'$'}EXTRA" ] || exit 66
+          case "${'$'}ORIGINAL" in
+            present) [ -f $BACKUP/bootanimation.zip ] || exit 66;;
+            absent) ;;
+            *) exit 66;;
+          esac
+        }
+        ${body.trimIndent()}
+    """.trimIndent()
+
+    private fun failure(context: Context, out: Root.Output): Result.Failed {
+        val message = when {
+            out.timedOut -> context.getString(R.string.boot_timeout)
+            out.exitCode == 65 -> context.getString(R.string.boot_backup_invalid)
+            out.exitCode == 66 -> context.getString(R.string.boot_animation_backup_unknown)
+            else -> context.getString(R.string.boot_command_failed, out.exitCode?.toString() ?: "?", out.output.trim().takeLast(200))
+        }
+        return Result.Failed(if (out.output.lineSequence().any { it.startsWith("writing:") }) {
+            context.getString(R.string.boot_partial, message)
+        } else message)
+    }
+
+    /** Сначала читаем размеры PNG: даже огромный исходник не должен исчерпать память. */
+    private fun customArt(path: String): Bitmap? {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, options)
+        options.inSampleSize = BootImage.sampleSize(options.outWidth, options.outHeight) ?: return null
+        options.inJustDecodeBounds = false
+        return BitmapFactory.decodeFile(path, options)
     }
 
     // ---------- Рисование ----------
@@ -281,16 +440,18 @@ object BootScreen {
 }
 
 /** Раздел logo Amlogic (AML_RES_IMG v2): заголовок, таблица картинок, контрольная сумма. */
-private object AmlRes {
+internal object AmlRes {
     /** Заменяет картинку [name]; null — формат не тот, раздел трогать нельзя. */
     fun replace(src: ByteArray, name: String, body: ByteArray): ByteArray? {
+        if (src.size < 0x40) return null
         val b = ByteBuffer.wrap(src).order(ByteOrder.LITTLE_ENDIAN)
         if (String(src, 8, 8, Charsets.US_ASCII) != "AML_RES!" || b.getInt(4) != 2) return null
         val size = b.getInt(16)
         val count = b.getInt(20)
-        val align = max(1, b.getInt(24))
-        if (size <= 0 || size > src.size || count !in 1..64 || b.getInt(0) != crc(src, size)) return null
+        val align = b.getInt(24)
+        if (size !in 0x40..src.size || count !in 1..64 || align <= 0 || b.getInt(0) != crc(src, size)) return null
         val header = 0x40 + count * 0x40
+        if (header > size) return null
         val out = ByteArrayOutputStream().apply { write(src, 0, header) }
         val table = ByteBuffer.wrap(src.copyOf(header)).order(ByteOrder.LITTLE_ENDIAN)
         var found = false
@@ -299,11 +460,13 @@ private object AmlRes {
             val itemName = String(src, o + 0x20, 0x20, Charsets.US_ASCII).substringBefore('\u0000')
             val start = b.getInt(o + 12)
             val len = b.getInt(o + 8)
+            if (start < header || len < 0 || start.toLong() + len > size) return null
             val data = if (itemName == name) body.also { found = true } else src.copyOfRange(start, start + len)
-            val pos = (out.size() + align - 1) / align * align
-            repeat(pos - out.size()) { out.write(0) }
+            val pos = (out.size().toLong() + align - 1) / align * align
+            if (pos + data.size > src.size) return null
+            repeat(pos.toInt() - out.size()) { out.write(0) }
             table.putInt(o + 8, data.size)
-            table.putInt(o + 12, pos)
+            table.putInt(o + 12, pos.toInt())
             out.write(data)
         }
         if (!found || out.size() > src.size) return null
@@ -315,18 +478,76 @@ private object AmlRes {
         return result + ByteArray(src.size - result.size)
     }
 
-    private fun crc(d: ByteArray, size: Int): Int = CRC32().also { it.update(d, 4, size - 4) }.value.toInt().inv()
+    fun crc(d: ByteArray, size: Int): Int = CRC32().also { it.update(d, 4, size - 4) }.value.toInt().inv()
 }
 
-/** Команды от root через su. Скрипт передаётся на вход оболочки. */
-object Root {
-    fun available(): Boolean = runCatching { run("id").contains("uid=0") }.getOrDefault(false)
+/** Размер декодирования — не больше удвоенного рисунка 420 × 220, с сохранением пропорций. */
+internal object BootImage {
+    fun sampleSize(width: Int, height: Int): Int? {
+        if (width !in 1..32768 || height !in 1..32768 || width.toLong() * height > 100_000_000) return null
+        var sample = 1
+        while ((width.toLong() + sample - 1) / sample > 840 || (height.toLong() + sample - 1) / sample > 440) sample *= 2
+        return sample
+    }
+}
 
-    fun run(script: String): String {
-        val p = ProcessBuilder("su").redirectErrorStream(true).start()
-        p.outputStream.bufferedWriter().use { it.write(script.trimIndent()); it.write("\nexit\n") }
-        val out = p.inputStream.bufferedReader().readText()
-        p.waitFor()
-        return out
+/** Команды от root через su; ввод и вывод читаются параллельно, ожидание ограничено. */
+object Root {
+    data class Output(val exitCode: Int?, val output: String, val timedOut: Boolean = false, val inputFailed: Boolean = false) {
+        val success: Boolean get() = exitCode == 0 && !timedOut && !inputFailed
+
+        // Совместимость с проверкой «Success» у установщика обновлений.
+        operator fun contains(text: String): Boolean = success && output.contains(text)
+    }
+
+    fun available(): Boolean = run("id", 10).let { it.success && Regex("\\buid=0\\b").containsMatchIn(it.output) }
+
+    fun run(script: String, timeoutSeconds: Long = 60): Output {
+        require(timeoutSeconds > 0)
+        val process = try { ProcessBuilder("su").redirectErrorStream(true).start() }
+        catch (e: java.io.IOException) { return Output(null, e.message.orEmpty()) }
+        return execute(process, script, TimeUnit.SECONDS.toMillis(timeoutSeconds))
+    }
+
+    internal fun execute(process: Process, script: String, timeoutMillis: Long): Output {
+        val output = StringBuilder()
+        val ioFailure = AtomicReference<Exception?>()
+        val reader = thread(isDaemon = true, name = "root-output") {
+            runCatching {
+                process.inputStream.bufferedReader().use { input ->
+                    val buffer = CharArray(1024)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        synchronized(output) {
+                            output.append(buffer, 0, n)
+                            if (output.length > 8192) output.delete(0, output.length - 8192)
+                        }
+                    }
+                }
+            }
+        }
+        val writer = thread(isDaemon = true, name = "root-input") {
+            try { process.outputStream.bufferedWriter().use { it.write(script.trimIndent()); it.write("\n") } }
+            catch (e: Exception) { ioFailure.set(e) }
+        }
+        var finished = false
+        try {
+            finished = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
+        } finally {
+            if (!finished) {
+                process.destroy()
+                if (!process.waitFor(1500, TimeUnit.MILLISECONDS)) {
+                    process.destroyForcibly()
+                    process.waitFor(1500, TimeUnit.MILLISECONDS)
+                }
+            }
+        }
+        writer.join(200)
+        reader.join(200)
+        val code = if (finished) process.exitValue() else null
+        val error = ioFailure.get()
+        val text = synchronized(output) { output.toString() } + (error?.let { "\n${it.message}" } ?: "")
+        return Output(code, text, !finished || code == 124, error != null)
     }
 }
