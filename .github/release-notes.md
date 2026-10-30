@@ -5,6 +5,7 @@
 ### 0.4.0
 - Boot screen changes only the Android boot animation, with verified backups and atomic file replacement. As in Firmware also restores a logo / ODM image changed by older versions when its backup verifies; unverified parts are skipped with a warning.
 - Update downloads clean up cached APKs and handle cancellation more reliably.
+- Smoother on weak boxes: rows and tiles are built as you scroll, lighter Classic mode reflections, wallpapers decoded at screen size, focus effects only on the selected tile.
 - Faster return to Home with cached apps; Home also closes open menus.
 - Long OK works by timer, including remotes without key repeats.
 - Autostart retries while apps become available after boot, and stops when you leave Home.
@@ -13,6 +14,7 @@
 ### Что нового в 0.4.0
 - Меняется только анимация загрузки Android: проверенные резервные копии и замена через временный файл. «Как в прошивке» также возвращает логотип / картинку ODM от старых версий, если копия проходит проверку; непроверенные части пропускаются с предупреждением.
 - Исправлены очистка APK обновления и отмена установки.
+- Плавнее на слабых приставках: ряды и плитки создаются по мере прокрутки, облегчены отражения «Классики», обои загружаются под размер экрана, эффекты фокуса — только у выбранной плитки.
 - Быстрее возврат «Домой» благодаря кэшу приложений; кнопка «Домой» закрывает меню.
 - Долгое ОК по таймеру работает и на пультах без повторов нажатия.
 - Автозапуск повторяет попытки после загрузки и прекращает их при уходе с главного экрана.
