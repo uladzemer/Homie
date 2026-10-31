@@ -3,7 +3,6 @@ package ru.iptvsimple.home
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
@@ -11,8 +10,6 @@ import android.graphics.Typeface
 import android.media.tv.TvInputInfo
 import android.media.tv.TvInputManager
 import android.os.Build
-import android.text.TextPaint
-import android.text.TextUtils
 import androidx.compose.ui.graphics.asImageBitmap
 
 /**
@@ -69,21 +66,22 @@ object TvInputs {
         canvas.drawRect(0f, 0f, w.toFloat(), h / 2f, Paint().apply {
             shader = LinearGradient(0f, 0f, 0f, h / 2f, 0x33FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
         })
+        // Только значок по центру: название и так подписано под плиткой (решение владельца 2026-10-31).
         context.getDrawable(icon)?.let {
-            val size = 72
-            it.setBounds((w - size) / 2, 34, (w + size) / 2, 34 + size)
-            it.alpha = 235
+            val size = 104
+            it.setBounds((w - size) / 2, (h - size) / 2, (w + size) / 2, (h + size) / 2)
+            it.alpha = 240
             it.draw(canvas)
         }
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 30f
-            textAlign = Paint.Align.CENTER
-            letterSpacing = 0.02f
-            typeface = typeface(context)
+        // Номер порта («HDMI 1» → «1») — мелко в углу, чтобы входы различались и без фокуса.
+        label.trim().takeLastWhile { it.isDigit() }.takeIf { it.isNotEmpty() && it.length <= 2 }?.let { number ->
+            canvas.drawText(number, w - 18f, h - 16f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xD9FFFFFF.toInt()
+                textSize = 26f
+                textAlign = Paint.Align.RIGHT
+                typeface = typeface(context)
+            })
         }
-        val text = TextUtils.ellipsize(label, TextPaint(paint), w - 32f, TextUtils.TruncateAt.END).toString()
-        canvas.drawText(text, w / 2f, 150f, paint)
         bitmap.asImageBitmap()
     }.getOrNull()
 
