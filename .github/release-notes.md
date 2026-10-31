@@ -2,6 +2,18 @@
 
 ![Homie home screen](https://raw.githubusercontent.com/uladzemer/Homie/master/docs/screenshots/en-home.jpg)
 
+### 0.5.0
+- TV inputs (HDMI, antenna) on the home screen: an "Inputs" row comes first on TVs, each input is a tile and can be set to open at startup. HDMI opens through the TV's own app; the TV tile switches to the tuner.
+- Input tiles drawn in Homie's style: gradient, icon, port number.
+- Smoother top bar on weak TVs: no layout animation on the buttons.
+- "Box" is now "device" in texts: Homie runs on TVs too.
+
+### Что нового в 0.5.0
+- Входы телевизора (HDMI, антенна) на главном экране: на телевизорах ряд «Входы» идёт первым, каждый вход — плитка, его можно поставить в автозапуск. HDMI открывается через приложение телевизора, плитка «TV» переключает на эфир.
+- Плитки входов в стиле Homie: градиент, значок, номер порта.
+- Верхняя панель плавнее на слабых телевизорах: без анимации размера кнопок.
+- «Приставка» в надписях заменена на «устройство»: Homie ставят и на телевизоры.
+
 ### 0.4.0
 - Boot screen changes only the Android boot animation, with verified backups and atomic file replacement. As in Firmware also restores a logo / ODM image changed by older versions when its backup verifies; unverified parts are skipped with a warning.
 - Update downloads clean up cached APKs and handle cancellation more reliably.
