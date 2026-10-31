@@ -8,7 +8,6 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.provider.Settings
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -145,12 +144,13 @@ private fun RoundButton(
         val (bg, focusInk) = buttonColors(focused, Palette.Pill)
         val ink = if (alert && !focused) Palette.Red else focusInk
         val shape = RoundedCornerShape(50)
-        // Круглая кнопка; в фокусе плавно раскрывается в «таблетку» с подписью.
+        // Круглая кнопка; в фокусе раскрывается в «таблетку» с подписью. Без анимации размера:
+        // она перестраивала разметку всей панели на каждом кадре и на TCL давала 22 % дёрганых
+        // кадров (замер 2026-10-31); подъём и масштаб считаются на GPU и остаются.
         Row(
             Modifier
                 .focusLift(motion, shape, maxScale = 1.1f)
                 .background(bg, shape)
-                .animateContentSize(liftSpring())
                 .padding(horizontal = if (focused) 14.dp else 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
