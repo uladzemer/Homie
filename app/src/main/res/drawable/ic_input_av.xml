@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Значок плитки входа: прочие входы — три разъёма «тюльпан». -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M10,24a5,5 0,1 1,10 0a5,5 0,1 1,-10 0z M13,24a2,2 0,1 0,4 0a2,2 0,1 0,-4 0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M19,24a5,5 0,1 1,10 0a5,5 0,1 1,-10 0z M22,24a2,2 0,1 0,4 0a2,2 0,1 0,-4 0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M28,24a5,5 0,1 1,10 0a5,5 0,1 1,-10 0z M31,24a2,2 0,1 0,4 0a2,2 0,1 0,-4 0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M14,30h2v8h-2z M23,30h2v8h-2z M32,30h2v8h-2z" />
+</vector>

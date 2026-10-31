@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
+import android.os.Looper
+import android.os.Handler
+import android.media.tv.TvInputManager
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -70,6 +73,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Входы телевизора появляются и пропадают (HDMI-CEC) — обновляем плитки, как при установке пакетов. */
+    private val inputCallback = object : TvInputManager.TvInputCallback() {
+        override fun onInputAdded(inputId: String) { InstalledApps.invalidate(); reloadTick++ }
+        override fun onInputRemoved(inputId: String) { InstalledApps.invalidate(); reloadTick++ }
+        override fun onInputUpdated(inputId: String) { InstalledApps.invalidate(); reloadTick++ }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = ConfigStore(this)
@@ -89,6 +99,10 @@ class MainActivity : ComponentActivity() {
             addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE)
             addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_UNAVAILABLE)
         })
+        // На приставках без службы входов getSystemService даёт null — тогда подписки просто нет.
+        runCatching {
+            getSystemService(TvInputManager::class.java)?.registerCallback(inputCallback, Handler(Looper.getMainLooper()))
+        }
 
         setContent {
             ScreenDensity {
@@ -122,6 +136,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(packageReceiver) }
+        runCatching { getSystemService(TvInputManager::class.java)?.unregisterCallback(inputCallback) }
         super.onDestroy()
     }
 
@@ -147,7 +162,7 @@ class MainActivity : ComponentActivity() {
             val loaded = withContext(Dispatchers.IO) { InstalledApps.load(context) }
             apps = loaded
             appsLoaded = true
-            if (config == null) applyConfig(HomeConfig.initial(loaded.keys, getString(R.string.favourites)))
+            if (config == null) applyConfig(HomeConfig.initial(loaded.keys, getString(R.string.favourites), getString(R.string.inputs_row)))
         }
         val photos = remember { Wallpapers.names(context) }
         val current = config

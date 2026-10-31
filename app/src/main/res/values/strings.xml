@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Homie</string>
     <string name="power_service_label">Homie: power button</string>
-    <string name="power_service_description">Only used by the power button on the home screen: put the box to sleep or open the restart menu. It does not read anything on the screen.</string>
+    <string name="power_service_description">Only used by the power button on the home screen: put the device to sleep or open the restart menu. It does not read anything on the screen.</string>
 
     <!-- Home screen -->
     <string name="all_apps">All Apps</string>
@@ -49,7 +49,7 @@
     <string name="settings">Settings</string>
     <string name="sleep">Sleep</string>
     <string name="restart_or_power_off">Restart or Power Off…</string>
-    <string name="power_setup">To let this button put the box to sleep or restart it, turn on Homie once in Accessibility settings. The app does not read anything on the screen.</string>
+    <string name="power_setup">To let this button put the device to sleep or restart it, turn on Homie once in Accessibility settings. The app does not read anything on the screen.</string>
     <string name="open_accessibility">Open Accessibility Settings</string>
 
     <!-- Settings -->
@@ -117,7 +117,7 @@
     <string name="boot_custom">Your Image</string>
     <string name="boot_applying">Applying…</string>
     <string name="boot_subtitle">Changes only the Android boot animation. Needs root. Your image: a light picture on a transparent background in %1$s. As in Firmware also restores a logo changed by older versions when its backup verifies.</string>
-    <string name="boot_done">Done. You will see it the next time the box starts.</string>
+    <string name="boot_done">Done. You will see it the next time the device starts.</string>
     <string name="boot_no_root">Needs root access. Allow Homie in the root manager and try again.</string>
     <string name="boot_no_image">No image found. Put a PNG at %1$s and try again.</string>
     <string name="boot_failed">Couldn’t apply: %1$s</string>
@@ -141,7 +141,9 @@
     <string name="update_later">Later (remind me in a week)</string>
     <string name="update_downloading">Downloading Update…</string>
     <string name="update_installing">Installing…</string>
-    <string name="update_installing_hint">If the box asks, confirm the installation. The home screen will restart by itself.</string>
+    <string name="update_installing_hint">If the device asks, confirm the installation. The home screen will restart by itself.</string>
     <string name="update_failed">Couldn’t update: %1$s</string>
     <string name="ok">OK</string>
+    <string name="inputs_row">Inputs</string>
+    <string name="tv_input">TV input</string>
 </resources>

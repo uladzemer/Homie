@@ -143,12 +143,17 @@ data class HomeConfig(
         }
 
         /**
-         * Первый запуск: один ряд «Избранное» с известными видео-приложениями, какие есть на
+         * Первый запуск: входы телевизора и ряд «Избранное» с известными видео-приложениями на
          * приставке, остальное — в «Остальных приложениях».
          */
-        fun initial(installed: Collection<String>, title: String): HomeConfig {
+        fun initial(installed: Collection<String>, title: String, inputsTitle: String): HomeConfig {
             val favourites = KnownApps.favourites.filter { it in installed }.take(6)
-            return HomeConfig(rows = listOf(HomeRow(1, title, favourites)))
+            val inputs = installed.filter(TvInputs::isInput)
+            val rows = buildList {
+                if (inputs.isNotEmpty()) add(HomeRow(2, inputsTitle, inputs))
+                add(HomeRow(1, title, favourites))
+            }
+            return HomeConfig(rows = rows)
         }
 
         private inline fun <reified E : Enum<E>> enumOr(name: String, default: E): E =

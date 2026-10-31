@@ -4,11 +4,15 @@ import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.media.tv.TvContract
+import android.media.tv.TvInputInfo
+import android.media.tv.TvInputManager
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.util.concurrent.atomic.AtomicInteger
@@ -65,6 +69,7 @@ object InstalledApps {
         val used = HashSet<ImageKey>()
         val pm = context.packageManager
         val result = LinkedHashMap<String, InstalledApp>()
+        TvInputs.load(context).forEach { result[it.pkg] = it }
         fun collect(category: String) {
             val intent = Intent(Intent.ACTION_MAIN).addCategory(category)
             for (info in pm.queryIntentActivities(intent, 0)) {
@@ -99,16 +104,43 @@ object InstalledApps {
     }
 
     fun launchIntent(context: Context, pkg: String): Intent? {
+        if (TvInputs.isInput(pkg)) return runCatching {
+            val pm = context.packageManager
+            val inputId = TvInputs.inputId(pkg)
+            val info = context.getSystemService(TvInputManager::class.java)?.getTvInputInfo(inputId)
+            val intent = if (info?.type == TvInputInfo.TYPE_TUNER) {
+                // Эфир: у каналов нет единого URI, открываем приложение телевизора целиком.
+                tvAppIntent(pm)
+            } else {
+                Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(inputId))
+            }
+            listOfNotNull(intent, Intent("com.android.tv.action.VIEW_INPUTS"))
+                .map { it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                .firstOrNull { it.resolveActivity(pm) != null }
+        }.getOrNull()
         val pm = context.packageManager
         val intent = pm.getLeanbackLaunchIntentForPackage(pkg) ?: pm.getLaunchIntentForPackage(pkg)
         return intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
-    fun isInstalled(context: Context, pkg: String): Boolean = runCatching {
-        context.packageManager.getPackageInfo(pkg, 0)
-    }.isSuccess
+    /** Приложение телевизора — то, что умеет показывать каналы (на TCL — com.tcl.tv). */
+    private fun tvAppIntent(pm: PackageManager): Intent? {
+        val probe = Intent(Intent.ACTION_VIEW).setType(TvContract.Channels.CONTENT_ITEM_TYPE)
+        val app = pm.queryIntentActivities(probe, 0).firstOrNull()?.activityInfo?.packageName ?: return null
+        return pm.getLeanbackLaunchIntentForPackage(app) ?: pm.getLaunchIntentForPackage(app)
+    }
 
-    private fun Drawable.toImage(maxWidth: Int, maxHeight: Int): ImageBitmap? {
+    fun isInstalled(context: Context, pkg: String): Boolean = runCatching {
+        if (TvInputs.isInput(pkg)) {
+            val info = context.getSystemService(TvInputManager::class.java)?.getTvInputInfo(TvInputs.inputId(pkg))
+            info != null && TvInputs.isShown(context, info)
+        } else {
+            context.packageManager.getPackageInfo(pkg, 0)
+            true
+        }
+    }.getOrDefault(false)
+
+    internal fun Drawable.toImage(maxWidth: Int, maxHeight: Int): ImageBitmap? {
         if (this is BitmapDrawable && bitmap != null && bitmap.width <= maxWidth * 2 && bitmap.height <= maxHeight * 2) {
             return bitmap.asImageBitmap()
         }

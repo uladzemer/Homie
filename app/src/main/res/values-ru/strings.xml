@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="power_service_label">Homie: кнопка питания</string>
-    <string name="power_service_description">Нужна только для кнопки питания на главном экране: усыпить приставку или открыть меню перезагрузки. Ничего на экране не читает.</string>
+    <string name="power_service_description">Нужна только для кнопки питания на главном экране: усыпить устройство или открыть меню перезагрузки. Ничего на экране не читает.</string>
 
     <string name="all_apps">Все приложения</string>
     <string name="other_apps">Остальные приложения</string>
@@ -19,8 +19,8 @@
     <string name="add_to_row">Добавить в ряд «%1$s»</string>
     <string name="new_row_with_app">Создать новый ряд с этим приложением</string>
     <string name="hide_app">Скрыть приложение</string>
-    <string name="autostart_off">Не открывать при включении приставки</string>
-    <string name="autostart_on">Открывать при включении приставки</string>
+    <string name="autostart_off">Не открывать при включении устройства</string>
+    <string name="autostart_on">Открывать при включении устройства</string>
     <string name="cancel">Отмена</string>
     <string name="row_named">Ряд «%1$s»</string>
     <string name="row_name">Название ряда</string>
@@ -44,11 +44,11 @@
     <string name="settings">Настройки</string>
     <string name="sleep">Спящий режим</string>
     <string name="restart_or_power_off">Перезагрузить или выключить…</string>
-    <string name="power_setup">Чтобы эта кнопка могла усыпить или перезагрузить приставку, один раз включите Homie в разделе «Специальные возможности». Приложение ничего на экране не читает.</string>
+    <string name="power_setup">Чтобы эта кнопка могла усыпить или перезагрузить устройство, один раз включите Homie в разделе «Специальные возможности». Приложение ничего на экране не читает.</string>
     <string name="open_accessibility">Открыть специальные возможности</string>
 
     <string name="section_device">Приставка</string>
-    <string name="device_settings">Настройки приставки</string>
+    <string name="device_settings">Настройки устройства</string>
     <string name="device_settings_value">Wi-Fi, звук, экран, дата и время</string>
     <string name="section_appearance">Вид</string>
     <string name="style">Стиль</string>
@@ -67,7 +67,7 @@
     <string name="add_row">Добавить ряд</string>
     <string name="other_apps_quoted">«Остальные приложения»</string>
     <string name="section_apps">Приложения</string>
-    <string name="open_at_startup">При включении приставки открывать</string>
+    <string name="open_at_startup">При включении устройства открывать</string>
     <string name="nothing_home_only">Ничего, только главный экран</string>
     <string name="hidden_apps">Скрытые приложения</string>
     <string name="none">Нет</string>
@@ -133,7 +133,9 @@
     <string name="update_later">Позже (напомню через неделю)</string>
     <string name="update_downloading">Загрузка обновления…</string>
     <string name="update_installing">Установка…</string>
-    <string name="update_installing_hint">Если приставка спросит — подтвердите установку. Главный экран перезапустится сам.</string>
+    <string name="update_installing_hint">Если устройство спросит — подтвердите установку. Главный экран перезапустится сам.</string>
     <string name="update_failed">Не удалось обновить: %1$s</string>
     <string name="ok">ОК</string>
+    <string name="inputs_row">Входы</string>
+    <string name="tv_input">Вход телевизора</string>
 </resources>
