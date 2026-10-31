@@ -108,13 +108,14 @@ object InstalledApps {
             val pm = context.packageManager
             val inputId = TvInputs.inputId(pkg)
             val info = context.getSystemService(TvInputManager::class.java)?.getTvInputInfo(inputId)
-            val intent = if (info?.type == TvInputInfo.TYPE_TUNER) {
-                // Эфир: у каналов нет единого URI, открываем приложение телевизора целиком.
-                tvAppIntent(pm)
+            val intents = if (info?.type == TvInputInfo.TYPE_TUNER) {
+                // Эфир: URI списка каналов тюнера переключает приложение телевизора на антенну
+                // (проверено на TCL); просто запустить приложение мало — оно вернёт последний вход.
+                listOfNotNull(Intent(Intent.ACTION_VIEW, TvContract.buildChannelsUriForInput(inputId)), tvAppIntent(pm))
             } else {
-                Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(inputId))
+                listOf(Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(inputId)))
             }
-            listOfNotNull(intent, Intent("com.android.tv.action.VIEW_INPUTS"))
+            (intents + Intent("com.android.tv.action.VIEW_INPUTS"))
                 .map { it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
                 .firstOrNull { it.resolveActivity(pm) != null }
         }.getOrNull()
